@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OGPO: Off-Policy Generative Policy Optimization</title>
+<meta name="description" content="OGPO: a sample-efficient algorithm for full-finetuning of generative control policies (flow/diffusion) via off-policy critic learning and on-policy PPO extraction over the denoising MDP.">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Noto+Sans:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
+
+<!-- MathJax 3: faster, smaller, better caching -->
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    packages: {'[+]': ['ams', 'newcommand', 'configmacros']}
+  },
+  svg: { fontCache: 'global' },
+  startup: {
+    typeset: true
+  }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js" async></script>
+
+<style>
+  :root {
+    --accent: #E67E22;
+    --accent-dark: #cf6d17;
+    --accent-soft: #fdf1e6;
+    --accent-softer: #fef7f0;
+    --accent-border: #f4c79a;
+    --ink: #1f2937;
+    --muted: #6b7280;
+    --divider: #e5e7eb;
+    --bg-alt: #fbfaf7;
+    --bg-code: #1e1e2e;
+  }
+
+  html { scroll-behavior: smooth; scroll-padding-top: 3.5rem; }
+  body {
+    font-family: 'Noto Sans', 'Google Sans', system-ui, -apple-system, sans-serif;
+    background: #ffffff;
+    color: var(--ink);
+    line-height: 1.6;
+  }
+
+  /* Navigation (lightweight, sticky) */
+  .navbar-top {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(255,255,255,0.92);
+    backdrop-filter: saturate(180%) blur(8px);
+    -webkit-backdrop-filter: saturate(180%) blur(8px);
+    border-bottom: 1px solid var(--divider);
+  }
+  .navbar-top .nav-inner {
+    max-width: 1080px; margin: 0 auto;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.55rem 1rem;
+  }
+  .navbar-top .brand {
+    font-family: 'Google Sans', sans-serif; font-weight: 700;
+    color: var(--accent); letter-spacing: 0.02em; font-size: 1.05rem;
+    text-decoration: none;
+  }
+  .navbar-top .nav-links {
+    display: flex; gap: 0.25rem; flex-wrap: wrap;
+  }
+  .navbar-top .nav-links a {
+    color: var(--ink); text-decoration: none;
+    font-size: 0.88rem; font-weight: 500;
+    padding: 0.35rem 0.65rem; border-radius: 6px;
+    transition: background 0.15s, color 0.15s;
+  }
+  .navbar-top .nav-links a:hover { background: var(--accent-soft); color: var(--accent); }
+  .navbar-top .nav-links a.active { color: var(--accent); }
+  @media (max-width: 720px) {
+    .navbar-top .nav-links { display: none; }
+  }
+
+  /* Scroll progress */
+  .progress-bar {
+    position: fixed; top: 0; left: 0; right: 0;
+    height: 2px; z-index: 51; background: transparent;
+    pointer-events: none;
+  }
+  .progress-bar-fill { height: 100%; width: 0%; background: var(--accent); transition: width 0.08s linear; }
+
+  /* Hero */
+  .hero-wrap {
+    padding: 3.5rem 1.25rem 1.5rem;
+    background: linear-gradient(180deg, var(--accent-softer) 0%, #ffffff 100%);
+  }
+  .container-main {
+    max-width: 960px; margin: 0 auto;
+  }
+  .paper-title {
+    font-family: 'Google Sans', sans-serif; font-weight: 700;
+    font-size: 2.3rem; line-height: 1.2; text-align: center;
+    letter-spacing: -0.01em;
+    margin-bottom: 1.2rem;
+  }
+  .paper-title .brand-ogpo { color: var(--accent); }
+  .paper-title .subtitle-small {
+    display: block; font-size: 1.05rem; font-weight: 500; color: var(--muted);
+    margin-top: 0.35rem; letter-spacing: 0;
+  }
+
+  .authors { text-align: center; font-family: 'Google Sans', sans-serif; font-size: 1.05rem; }
+  .authors a { color: var(--accent); text-decoration: none; }
+  .authors a:hover { text-decoration: underline; }
+  .author-block { display: inline-block; margin: 0 0.25rem; }
+  .affiliations { text-align: center; color: var(--muted); font-family: 'Google Sans', sans-serif; font-size: 0.98rem; margin-top: 0.5rem; }
+  .equal-contrib { text-align: center; font-size: 0.82rem; color: #9ca3af; margin-top: 0.3rem; }
+
+  /* Link buttons (robometer-styled, TQL-colored) */
+  .link-buttons { text-align: center; margin-top: 1.4rem; }
+  .link-buttons .button {
+    margin: 0.25rem; border-radius: 999px;
+    font-family: 'Google Sans', sans-serif; font-weight: 500;
+    padding-left: 1.1rem; padding-right: 1.1rem;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  .link-buttons .button:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(230, 126, 34, 0.18); }
+  .link-buttons .button.is-dark { background: var(--ink); border-color: var(--ink); }
+  .link-buttons .button.is-dark:hover { background: #374151; border-color: #374151; }
+  .link-buttons .button.is-accent {
+    background: var(--accent); border-color: var(--accent); color: #fff;
+  }
+  .link-buttons .button.is-accent:hover { background: var(--accent-dark); border-color: var(--accent-dark); color: #fff; }
+  .link-buttons .button.is-light-accent {
+    background: #fff; color: var(--accent); border: 1.5px solid var(--accent-border);
+  }
+  .link-buttons .button.is-light-accent:hover { background: var(--accent-soft); color: var(--accent-dark); border-color: var(--accent); }
+
+  /* Sections */
+  section.block {
+    padding: 2.2rem 1.25rem 0.9rem;
+  }
+  section.block.compact { padding: 1rem 1.25rem; }
+  section.block.alt { background: var(--bg-alt); }
+
+  h2.section-title {
+    font-family: 'Google Sans', sans-serif;
+    font-size: 1.7rem; font-weight: 700;
+    color: var(--accent);
+    margin: 0 0 0.35rem;
+  }
+  .section-rule {
+    width: 42px; height: 3px; background: var(--accent);
+    border: none; border-radius: 2px; margin: 0 0 1rem; }
+
+  .lead { font-size: 1.02rem; line-height: 1.75; color: #374151; }
+  .lead.justified { text-align: justify; }
+
+  hr.divider {
+    background: var(--divider); height: 1px; border: none;
+    max-width: 960px; margin: 0.5rem auto;
+  }
+
+  /* Figures */
+  figure.pub-fig { margin: 0.75rem 0 0.25rem; text-align: center; }
+  figure.pub-fig img, figure.pub-fig video { width: 100%; height: auto; border-radius: 6px; display: block; }
+  figure.pub-fig .caption {
+    font-size: 0.9rem; color: #555; font-style: italic; margin-top: 0.55rem;
+    text-align: left; line-height: 1.5;
+  }
+  figure.pub-fig .caption strong { font-style: normal; color: var(--ink); }
+
+  /* Key takeaways (TQL-styled) */
+  .key-ideas { display: grid; grid-template-columns: 1fr; gap: 0.5rem; margin: 0.5rem 0; }
+  .key-idea { padding: 0.4rem 0; }
+  .key-idea strong.label { color: var(--accent); }
+  @media (min-width: 760px) {
+    .key-ideas.three { grid-template-columns: 1fr 1fr 1fr; gap: 1rem; }
+    .key-ideas.three .key-idea {
+      background: #fff;
+      border: 1px solid var(--divider);
+      border-top: 3px solid var(--accent);
+      border-radius: 8px;
+      padding: 1rem 1.1rem;
+    }
+  }
+
+  /* Highlight boxes (robometer-style) */
+  .callout {
+    border-radius: 8px; padding: 0.9rem 1.1rem;
+    margin: 0.6rem 0; font-size: 0.97rem; line-height: 1.65;
+    border-left: 3px solid var(--accent);
+    background: var(--accent-soft);
+  }
+  .callout.neutral { background: #f6f7fb; border-left-color: #6b7280; }
+  .callout.success { background: #eaf7ef; border-left-color: #2f9e44; }
+  .callout strong.label { color: var(--ink); }
+
+  /* Tabs (robometer-style, recolored to orange) */
+  .tabs-wrap { margin: 0.75rem 0 0.5rem; }
+  .tabs-wrap ul { border-bottom: 1px solid var(--divider) !important; }
+  .tabs-wrap.is-toggle ul { border-bottom: none !important; }
+  .tabs-wrap .tabs.is-toggle li a {
+    border-color: #e5e7eb; color: var(--ink);
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+  .tabs-wrap .tabs.is-toggle li:not(.is-active) a:hover {
+    background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent-dark);
+  }
+  .tabs-wrap .tabs.is-toggle li.is-active a {
+    background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600;
+  }
+  .tab-panel { display: none; }
+  .tab-panel.is-active { display: block; animation: fadeIn 0.2s ease; }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Equation block */
+  .eqn-block {
+    background: #fafafa; border: 1px solid var(--divider); border-radius: 6px;
+    padding: 0.6rem 0.9rem; margin: 0.6rem 0; overflow-x: auto;
+    font-size: 0.98rem;
+  }
+  .eqn-block .tag {
+    display: block; font-size: 0.8rem; color: var(--muted);
+    margin-bottom: 0.2rem; font-family: 'Google Sans', sans-serif;
+  }
+
+  /* Tables */
+  table.summary {
+    width: 100%; border-collapse: collapse;
+    font-size: 0.92rem; margin: 0.5rem 0 1rem;
+    background: #fff;
+    border-radius: 8px; overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  table.summary th, table.summary td {
+    padding: 0.55rem 0.75rem;
+    border-bottom: 1px solid var(--divider);
+    text-align: center;
+  }
+  table.summary th {
+    background: var(--ink); color: #fff;
+    font-family: 'Google Sans', sans-serif; font-weight: 600;
+  }
+  table.summary tr.ours td { background: var(--accent-soft); }
+  table.summary td.first { text-align: left; font-weight: 500; }
+  table.summary .sym { font-size: 1.1rem; letter-spacing: 0.1em; }
+  table.summary .good { color: #2f9e44; }
+  table.summary .bad { color: #c0392b; }
+
+  /* Video grid */
+  .video-grid { display: grid; grid-template-columns: 1fr; gap: 0.9rem; }
+  @media (min-width: 700px) { .video-grid.two { grid-template-columns: 1fr 1fr; } .video-grid.three { grid-template-columns: 1fr 1fr 1fr; } }
+  .video-card {
+    background: #fff; border: 1px solid var(--divider); border-radius: 8px; overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .video-card video { width: 100%; height: auto; display: block; background: #000; }
+  .video-card .vc-caption { padding: 0.65rem 0.9rem; font-size: 0.88rem; color: #444; }
+  .video-card .vc-caption b { color: var(--accent); }
+
+  /* BibTeX */
+  .bibtex-wrap { position: relative; }
+  .bibtex-box {
+    background: var(--bg-code);
+    color: #cdd6f4;
+    border-radius: 8px;
+    padding: 1rem 1.2rem;
+    font-family: 'JetBrains Mono', 'Courier New', monospace;
+    font-size: 0.82rem; line-height: 1.65;
+    overflow-x: auto; white-space: pre;
+  }
+  .bibtex-copy {
+    position: absolute; top: 0.6rem; right: 0.6rem;
+    background: rgba(255,255,255,0.08); color: #cdd6f4;
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 6px; padding: 0.3rem 0.55rem;
+    cursor: pointer; font-size: 0.75rem;
+    transition: background 0.15s;
+  }
+  .bibtex-copy:hover { background: rgba(255,255,255,0.18); }
+
+  /* Footer */
+  footer.site-footer {
+    padding: 2rem 1.25rem;
+    background: #fafafa;
+    border-top: 1px solid var(--divider);
+    text-align: center;
+    color: var(--muted); font-size: 0.88rem;
+  }
+  footer.site-footer a { color: var(--accent); text-decoration: none; }
+  footer.site-footer a:hover { text-decoration: underline; }
+
+  /* Responsive */
+  @media (max-width: 640px) {
+    .paper-title { font-size: 1.55rem; }
+    h2.section-title { font-size: 1.35rem; }
+    .hero-wrap { padding: 2rem 1rem 1.25rem; }
+  }
+</style>
+</head>
+<body>
+
+<div class="progress-bar" aria-hidden="true"><div class="progress-bar-fill" id="pbar"></div></div>
+
+<nav class="navbar-top">
+  <div class="nav-inner">
+    <a href="#top" class="brand">OGPO</a>
+    <div class="nav-links">
+      <a href="#overview">Overview</a>
+      <a href="#takeaways">Takeaways</a>
+      <a href="#method">Method</a>
+      <a href="#formulations">Formulations</a>
+      <a href="#results">Results</a>
+      <a href="#videos">Rollouts</a>
+      <a href="#analysis">Analysis</a>
+      <a href="#bibtex">BibTeX</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ═════════════════════════════════════════════════════════════════
+     HERO
+═══════════════════════════════════════════════════════════════════ -->
+<section class="hero-wrap" id="top">
+  <div class="container-main has-text-centered">
+    <h1 class="paper-title">
+      <span class="brand-ogpo">OGPO</span>: Sample-Efficient Full-Finetuning of Generative Control Policies
+      <span class="subtitle-small">Off-Policy Generative Policy Optimization for Flow- and Diffusion-based Robotic Policies</span>
+    </h1>
+
+    <div class="authors">
+      <span class="author-block">Anonymous Authors</span>
+    </div>
+    <p class="affiliations">Under review at ICML 2026</p>
+    <p class="equal-contrib">Author list will be released upon deanonymization.</p>
+
+    <div class="link-buttons">
+      <a class="button is-dark" href="#" target="_blank" rel="noopener">
+        <span class="icon"><i class="ai ai-arxiv"></i></span>
+        <span>arXiv</span>
+      </a>
+      <a class="button is-accent" href="ogpo_paper.pdf" target="_blank" rel="noopener">
+        <span class="icon"><i class="fas fa-file-pdf"></i></span>
+        <span>Paper</span>
+      </a>
+      <a class="button is-light-accent" href="#" target="_blank" rel="noopener">
+        <span class="icon"><i class="fab fa-github"></i></span>
+        <span>Code (Coming Soon)</span>
+      </a>
+      <a class="button is-light-accent" href="#bibtex">
+        <span class="icon"><i class="fas fa-quote-right"></i></span>
+        <span>BibTeX</span>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════════════════════════════════════════════════════════
+     OVERVIEW / TEASER
+═══════════════════════════════════════════════════════════════════ -->
+<section class="block compact" id="overview">
+  <div class="container-main">
+    <figure class="pub-fig">
+      <img src="assets/figures/bi_level_main.png" alt="Bi-level MDP view: OGPO truncates the bi-level MDP at the end of each denoising trajectory, using Q-values as a terminal reward." loading="eager">
+      <figcaption class="caption">
+        <strong>OGPO at a glance.</strong> The bi-level MDP (Ren et al., 2024) embeds denoising trajectories inside environment dynamics.
+        OGPO <em>truncates</em> this MDP at the end of each denoising trajectory, using a Q-value from an off-policy critic as a terminal reward.
+        This enables <em>off-policy</em> policy extraction via <em>on-policy</em> PPO &mdash; fully in the imagination of the GCP, with zero extra environment interaction.
+      </figcaption>
+    </figure>
+  </div>
+</section>
+
+<hr class="divider">
+
+<!-- ═════════════════════════════════════════════════════════════════
+     ABSTRACT
+═══════════════════════════════════════════════════════════════════ -->
+<section class="block compact">
+  <div class="container-main">
+    <h2 class="section-title">Abstract</h2>
+    <hr class="section-rule">
+    <p class="lead justified">
+      Generative control policies (GCPs), such as diffusion- and flow-based policies, have emerged as effective parameterizations for robot learning.
+      Yet there remains substantial debate over how to <em>sample-efficiently</em> fine-tune them via reinforcement learning.
+      A prevailing view holds that finetuning all GCP steps is unnecessary, motivating approaches that fine-tune only a subset of the generative process &mdash;
+      either <em>steering</em> the initial noise distribution, or learning <em>residual</em> corrections on top of a frozen base policy.
+      In this work, we introduce <strong>Off-Policy Generative Policy Optimization (OGPO)</strong>, a sample-efficient algorithm for full-finetuning of GCPs that
+      maintains off-policy critic networks to maximize data reuse and propagates policy gradients through the full generative process via a modified PPO objective,
+      using critics as the terminal reward.
+      OGPO achieves state-of-the-art performance on manipulation tasks spanning multi-task settings, high-precision insertion, and dexterous control.
+      To our knowledge, it is also the only method that can fine-tune poorly-initialized behavior cloning policies to near full task-success with no expert data
+      in the online replay buffer, and does so with few task-specific hyperparameter tuning.
+    </p>
+  </div>
+</section>
+
+<hr class="divider">
+
+<!-- ═════════════════════════════════════════════════════════════════
+     KEY TAKEAWAYS
+═══════════════════════════════════════════════════════════════════ -->
+<section class="block" id="takeaways">
+  <div class="container-main">
+    <h2 class="section-title">Key Takeaways</h2>
+    <hr class="section-rule">
+    <div class="key-ideas three">
+      <div class="key-idea">
+        <p><strong class="label">&#x2702;&#xFE0F; Sever the bi-level MDP.</strong>
+          Denoising trajectories are <em>computational</em>, environment transitions are <em>expensive</em>. OGPO truncates the bi-level MDP at the denoising boundary and uses $Q_{\text{targ}}(s, a_{t,0})$ as a terminal reward &mdash; decoupling sample-efficient critic learning from expressive policy extraction.</p>
+      </div>
+      <div class="key-idea">
+        <p><strong class="label">&#x267B;&#xFE0F; Off-policy critic, on-policy extractor.</strong>
+          Fit $Q$ off-policy for data reuse; extract policies with PPO over parallel-sampled denoising trajectories in the GCP's imagination. No backprop-through-time, no $\nabla_a Q$ differentiation.</p>
+      </div>
+      <div class="key-idea">
+        <p><strong class="label">&#x1F680; Full-finetuning, with no expert data.</strong>
+          OGPO+ fine-tunes poorly-initialized BC policies to near-full success <em>without</em> pre-training data in the replay buffer &mdash; a capability no prior steering/residual method achieves.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="divider">
+
+<!-- ═════════════════════════════════════════════════════════════════
+     METHOD
+═══════════════════════════════════════════════════════════════════ -->
+<section class="block alt" id="method">
+  <div class="container-main">
+    <h2 class="section-title">Method</h2>
+    <hr class="section-rule">
+
+    <p class="lead justified">
+      We view a flow- or diffusion-based GCP as an iterative policy $\bar\pi_\theta: \mathcal{S} \times \mathcal{A} \times \mathbb{N} \to \Delta(\mathcal{A})$ that, given state $s_t$, produces a denoising trajectory $a_{t,K:0} = (a_{t,K}, \ldots, a_{t,0})$.
+      Following Ren et al. (2024), this unfolds a <em>bi-level MDP</em> where the outer MDP $\mathcal{M}_{\text{env}}$ handles environment transitions $s_t \to s_{t+1}$, and an inner denoising MDP handles transitions $a_{t,k} \to a_{t,k-1}$.
+    </p>
+
+    <div class="callout">
+      <strong class="label">Key observation.</strong> Environment samples are costly; denoising samples are free. Off-policy critic learning provides the sample-efficient signal; PPO provides expressive, stable updates through the full generative process &mdash; but we only need it on the cheap denoising dimension.
+    </div>
+
+    <h3 style="font-family:'Google Sans',sans-serif; color:var(--ink); font-size:1.15rem; margin-top:1.2rem;">OGPO Objective</h3>
+
+    <div class="eqn-block">
+      <span class="tag">Truncated bi-level PPO with critic as terminal reward</span>
+      $$
+      \ell_{\text{PPO}}(\theta; s_t, a_{t,K:0}, \hat V) = \min\!\Big( \omega_\theta \hat A,\; \mathrm{clip}(\omega_\theta, 1-\epsilon, 1+\epsilon)\, \hat A \Big)
+      $$
+      $$
+      \omega_\theta = \prod_{k=1}^K \frac{\pi_\theta(a_{t,k-1} \mid s_t, a_{t,k})}{\pi_{\bar\theta}(a_{t,k-1} \mid s_t, a_{t,k})}, \qquad
+      \hat A = Q_{\text{targ}}(s_t, a_{t,0}) - \hat V
+      $$
+    </div>
+
+    <p class="lead justified">
+      Crucially, $Q_{\text{targ}}$ acts as a <em>terminal reward</em> at the end of the denoising MDP: since no rewards are dispensed at intermediate denoising steps, $\hat A$ is the Monte-Carlo return along the denoising trajectory.
+      We sample $N_{\text{group}}$ parallel denoising trajectories per state (GRPO-style) and average the baseline via
+      $\hat V^{(i)} \leftarrow \tfrac{1}{N_{\text{group}}}\sum_j Q_{\text{targ}}(s^{(i)}, a_0^{(i,j)})$,
+      avoiding a separate value network.
+    </p>
+
+    <div class="eqn-block">
+      <span class="tag">Group-averaged OGPO loss</span>
+      $$
+      \hat{\mathcal L}_{\text{PPO}}(\theta) = \frac{1}{N_{\text{tot}}} \sum_i \sum_j \ell_{\text{PPO}}(\theta; s^{(i)}, a_{K:0}^{(i,j)}, \hat V^{(i)})
+      $$
+    </div>
+
+    <figure class="pub-fig" style="margin-top:1.2rem;">
+      <img src="assets/figures/bc_flow_vs_rl_flow.jpg" alt="Comparison of off-policy RL algorithms for GCPs" loading="lazy">
+      <figcaption class="caption">
+        <strong>Comparison of off-policy algorithms for GCP finetuning.</strong>
+        <em>Left:</em> DSRL trains an initial-noise steering policy; EXPO trains residual corrections at the final step.
+        <em>Center:</em> QC imitates Best-of-N actions ranked by a critic; BPTT differentiates through the entire chain.
+        <em>Right:</em> OGPO uses an ensemble of critics as terminal rewards, propagating likelihood-ratio updates through the full GCP chain.
+      </figcaption>
+    </figure>
+
+    <h3 style="font-family:'Google Sans',sans-serif; color:var(--ink); font-size:1.15rem; margin-top:1.2rem;">OGPO+: Best-of-N Inference + BC Regularization</h3>
+
+    <div class="callout success">
+      <strong class="label">1. Best-of-N Inference.</strong>
+      At deployment, sample $N$ candidates and select via a critic: $a_{\text{BoN},t} = \arg\max \{ Q_{\text{BoN}}(s_t, a_{t,0}^{(n)}) : n=1,\ldots,N\}$.
+      Exploits the verification&ndash;generation gap.
+    </div>
+    <div class="callout">
+      <strong class="label">2. Behavior cloning on a success buffer.</strong>
+      Maintain $\mathcal D_{\text{succ}} \subseteq \mathcal D_{\text{roll}}$ of successful episodes. Add $\mathcal L_{\text{BC}}$ on $\mathcal D_{\text{succ}}$ to the loss:
+      $\mathcal L_{\text{Total}}(\theta) = \mathcal L_{\text{PPO}}(\theta) + \lambda_{\text{BC}} \mathcal L_{\text{BC}}(\theta)$.
+      Grounds the policy in known-good actions while PPO aggressively explores.
+    </div>
+  </div>
+</section>
+
+<hr class="divider">
+
+<!-- ═════════════════════════════════════════════════════════════════
+     FORMULATIONS (tabbed deep-dives)
+═══════════════════════════════════════════════════════════════════ -->
+<section class="block" id="formulations">
+  <div class="container-main">
+    <h2 class="section-title">RL Formulations Studied</h2>
+    <hr class="section-rule">
+    <p class="lead">Throughout this work we systematically compare five distinct RL formulations for finetuning GCPs. Each slice trades off sample efficiency, stability, and expressivity.</p>
+
+    <div class="tabs-wrap is-toggle">
+      <div class="tabs is-centered is-medium is-toggle">
+        <ul id="formulation-tabs">
+          <li class="is-active" data-panel="form-ogpo"><a>OGPO (Ours)</a></li>
+          <li data-panel="form-dppo"><a>DPPO (On-policy)</a></li>
+          <li data-panel="form-dsrl"><a>DSRL (Steering)</a></li>
+          <li data-panel="form-expo"><a>EXPO (Residual)</a></li>
+          <li data-panel="form-qc"><a>QC (Off-policy SFT)</a></li>
+        </ul>
+      </div>
+
+      <div id="form-ogpo" class="tab-panel is-active">
+        <div class="callout">
+          <strong class="label">Setting.</strong> Full-finetuning of all denoising steps via off-policy TD critic + on-policy PPO extraction on a truncated denoising MDP.
+        </div>
+        <p class="lead justified">
+          Key equation: $\hat A = Q_{\text{targ}}(s, a_{t,0}) - \hat V$ with $\omega_\theta = \prod_k \pi_\theta / \pi_{\bar\theta}$ over the denoising chain. Delivers the best of both worlds &mdash; <strong>TD sample efficiency</strong> in $\mathcal M_{\text{env}}$ and <strong>expressive, stable zero-order updates</strong> on the denoising chain.
+        </p>
+      </div>
+
+      <div id="form-dppo" class="tab-panel">
+        <div class="callout neutral">
+          <strong class="label">Setting.</strong> Treats the entire bi-level MDP as a single flat MDP; optimizes with standard on-policy PPO end-to-end.
+        </div>
+        <p class="lead justified">
+          Stable updates, no critic. But every gradient step needs fresh environment interactions, and the effective horizon is $K \times T$ rather than $T$.
+          Empirically <strong>~7&times; slower</strong> than OGPO+ on ROBOMIMIC tasks to reach the same success rate.
+        </p>
+      </div>
+
+      <div id="form-dsrl" class="tab-panel">
+        <div class="callout neutral">
+          <strong class="label">Setting.</strong> Freezes the GCP; trains an initial-noise <em>steering</em> policy over $a_{t,K}$ to bias the base distribution.
+        </div>
+        <p class="lead justified">
+          Cheap and sample-efficient <em>when</em> the base policy already covers optimal actions. Fails when the BC init is weak (e.g. K<small>ITCHEN</small>) and on high-precision tasks, where later denoising steps must change.
+        </p>
+      </div>
+
+      <div id="form-expo" class="tab-panel">
+        <div class="callout neutral">
+          <strong class="label">Setting.</strong> Freezes the GCP; learns an additive residual correction $\delta_\phi(s, a_{t,0})$ on top of the final action.
+        </div>
+        <p class="lead justified">
+          Strong on dense-reward dexterous control (A<small>DROIT</small>) where small corrections suffice. Generally unstable or stuck when the base policy is weak, because the residual cannot expand action-distribution support.
+        </p>
+      </div>
+
+      <div id="form-qc" class="tab-panel">
+        <div class="callout neutral">
+          <strong class="label">Setting.</strong> Off-policy critic learning + supervised finetuning of the GCP toward Best-of-N actions ranked by $Q$.
+        </div>
+        <p class="lead justified">
+          Sample efficient, but SFT cannot expand support of the action distribution. Plateaus at lower performance on multiple tasks and needs significant per-task hyperparameter tuning.
+        </p>
+      </div>
+    </div>
+
+    <h3 style="font-family:'Google Sans',sans-serif; color:var(--ink); font-size:1.15rem; margin-top:1.5rem;">Summary of Capabilities</h3>
+    <div style="overflow-x:auto;">
+    <table class="summary">
+      <thead>
+        <tr>
+          <th class="first" style="text-align:left;">Criterion</th>
+          <th>OGPO</th><th>QC</th><th>DSRL</th><th>EXPO</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="first">Mixed Data Quality</td>     <td class="sym good">&#10003;&#10003;</td><td class="sym good">&#10003;&#10003;</td><td class="sym good">&#10003;&#10003;</td><td class="sym bad">&#10007;&#10007;</td></tr>
+        <tr><td class="first">High-Precision Tasks</td>    <td class="sym good">&#10003;&#10003;</td><td class="sym good">&#10003;&#10003;</td><td class="sym bad">&#10007;&#10007;</td><td class="sym good">&#10003;&#10003;</td></tr>
+        <tr><td class="first">Partial Demonstrations</td>  <td class="sym good">&#10003;&#10003;</td><td class="sym good">&#10003;&#10003;</td><td class="sym good">&#10003;&#10003;</td><td class="sym bad">&#10007;&#10007;</td></tr>
+        <tr><td class="first">Long Horizon</td>            <td class="sym good">&#10003;&#10003;</td><td>&#10003;&#10007;</td><td>&#10003;&#10007;</td><td class="sym bad">&#10007;&#10007;</td></tr>
+        <tr><td class="first">Dense / Dexterous</td>       <td class="sym good">&#10003;&#10003;</td><td class="sym good">&#10003;&#10003;</td><td>&#10003;&#10007;</td><td class="sym good">&#10003;&#10003;</td></tr>
+        <tr><td class="first">High Sample Efficiency</td>  <td class="sym good">&#10003;&#10003;</td><td>&#10003;&#10007;</td><td class="sym bad">&#10007;&#10007;</td><td>&#10003;&#10007;</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p class="lead" style="font-size:0.9rem; color:var(--muted);">Left/right symbol = performance <em>with</em>/<em>without</em> task-specific hyperparameter tuning. <span class="good">&#10003;&#10003;</span> converges on all tasks competitive with SOTA; <span class="bad">&#10007;&#10007;</span> fails on all tasks.</p>
+  </div>
+</section>
+
+<hr class="divider">
+
+<!-- ═════════════════════════════════════════════════════════════════
+     RESULTS (tabbed by environment)
+═══════════════════════════════════════════════════════════════════ -->
+<section class="block alt" id="results">
+  <div class="container-main">
+    <h2 class="section-title">Benchmark Results</h2>
+    <hr class="section-rule">
+    <p class="lead">
+      We evaluate OGPO across four environment families spanning multi-task long-horizon control (<em>Franka Kitchen</em>), high-precision insertion (<em>Robomimic</em>), dexterous manipulation (<em>Adroit</em>), and pixel-based language-conditioned control (<em>LIBERO</em>).
+      Policies are pre-trained with BC up to ~50% success, then fine-tuned <em>without</em> access to offline data.
+    </p>
+
+    <div class="tabs-wrap is-toggle">
+      <div class="tabs is-centered is-medium is-toggle">
+        <ul id="env-tabs">
+          <li class="is-active" data-panel="env-kitchen"><a>Franka Kitchen</a></li>
+          <li data-panel="env-robomimic"><a>Robomimic</a></li>
+          <li data-panel="env-adroit"><a>Adroit</a></li>
+          <li data-panel="env-dppo-vs"><a>vs. DPPO</a></li>
+        </ul>
+      </div>
+
+      <div id="env-kitchen" class="tab-panel is-active">
+        <div class="callout"><strong class="label">Setting.</strong> 9-DoF Franka manipulating 4 kitchen objects. Tests sensitivity to multi-step trajectories with complete, mixed, and partial demonstrations.</div>
+        <div class="video-grid three">
+          <figure class="pub-fig"><img src="assets/comparison/D4RL_kitchen_complete-v2.png" alt="Kitchen Complete" loading="lazy"><figcaption class="caption"><strong>Complete.</strong> All demos show all 4 subtasks.</figcaption></figure>
+          <figure class="pub-fig"><img src="assets/comparison/D4RL_kitchen_mixed-v2.png" alt="Kitchen Mixed" loading="lazy"><figcaption class="caption"><strong>Mixed.</strong> Randomized subtask orderings.</figcaption></figure>
+          <figure class="pub-fig"><img src="assets/comparison/D4RL_kitchen_partial-v2.png" alt="Kitchen Partial" loading="lazy"><figcaption class="caption"><strong>Partial.</strong> Truncated demonstration trajectories.</figcaption></figure>
+        </div>
+      </div>
+
+      <div id="env-robomimic" class="tab-panel">
+        <div class="callout"><strong class="label">Setting.</strong> High-precision insertion and transport tasks &mdash; Square (medium-horizon), Transport (bi-manual long-horizon), Tool Hang (long-horizon multi-step).</div>
+        <div class="video-grid two">
+          <figure class="pub-fig"><img src="assets/comparison/square-mh-low_dim-clip.png" alt="Square (clip)" loading="lazy"><figcaption class="caption"><strong>Square (clipped BC init).</strong></figcaption></figure>
+          <figure class="pub-fig"><img src="assets/comparison/square-mh-low_dim-no-clip.png" alt="Square (no clip)" loading="lazy"><figcaption class="caption"><strong>Square (full BC init).</strong></figcaption></figure>
+          <figure class="pub-fig"><img src="assets/comparison/tool_hang-ph-low_dim.png" alt="Tool Hang" loading="lazy"><figcaption class="caption"><strong>Tool Hang.</strong> Long-horizon multi-step insertion.</figcaption></figure>
+          <figure class="pub-fig"><img src="assets/comparison/transport-mh-low_dim.png" alt="Transport" loading="lazy"><figcaption class="caption"><strong>Transport.</strong> Bi-manual long-horizon transfer.</figcaption></figure>
+        </div>
+      </div>
+
+      <div id="env-adroit" class="tab-panel">
+        <div class="callout"><strong class="label">Setting.</strong> 24-DoF Adroit Hand with dense reward &mdash; door, hammer, pen, relocate. Expert data from D4RL / Minari.</div>
+        <div class="video-grid two">
+          <figure class="pub-fig"><img src="assets/comparison/AdroitHandDoor-v1.png" alt="Door" loading="lazy"><figcaption class="caption"><strong>Door.</strong></figcaption></figure>
+          <figure class="pub-fig"><img src="assets/comparison/AdroitHandHammer-v1.png" alt="Hammer" loading="lazy"><figcaption class="caption"><strong>Hammer.</strong></figcaption></figure>
+          <figure class="pub-fig"><img src="assets/comparison/AdroitHandPen-v1.png" alt="Pen" loading="lazy"><figcaption class="caption"><strong>Pen reorientation.</strong></figcaption></figure>
+          <figure class="pub-fig"><img src="assets/comparison/AdroitHandRelocate-v1.png" alt="Relocate" loading="lazy"><figcaption class="caption"><strong>Relocate.</strong></figcaption></figure>
+        </div>
+      </div>
+
+      <div id="env-dppo-vs" class="tab-panel">
+        <div class="callout success"><strong class="label">Headline.</strong> OGPO+ matches DPPO's final success rate with roughly <strong>7&times;</strong> fewer environment steps on Robomimic tasks.</div>
+        <div class="video-grid two">
+          <figure class="pub-fig"><img src="assets/comparison/square-mh-low_dim-no-clip.png" alt="Square vs DPPO" loading="lazy"><figcaption class="caption"><strong>Square.</strong> OGPO+ vs on-policy DPPO &mdash; dramatic sample-efficiency gain from off-policy critic + denoising-MDP truncation.</figcaption></figure>
+          <figure class="pub-fig"><img src="assets/comparison/transport-mh-low_dim.png" alt="Transport vs DPPO" loading="lazy"><figcaption class="caption"><strong>Transport.</strong> Off-policy data reuse remains critical in long-horizon bi-manual tasks.</figcaption></figure>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="divider">
+
+<!-- ═════════════════════════════════════════════════════════════════
+     VIDEOS / ROLLOUTS
+═══════════════════════════════════════════════════════════════════ -->
+<section class="block" id="videos">
+  <div class="container-main">
+    <h2 class="section-title">Qualitative Rollouts</h2>
+    <hr class="section-rule">
+    <p class="lead">Rollouts on Robomimic tasks from the <em>clipped</em> BC initialization. OGPO+ completes high-precision insertion reliably while competing approaches fail in characteristic ways.</p>
+
+    <div class="tabs-wrap is-toggle">
+      <div class="tabs is-centered is-small is-toggle">
+        <ul id="video-tabs">
+          <li class="is-active" data-panel="video-square"><a>Square Insertion</a></li>
+          <li data-panel="video-toolhang"><a>Tool Hang</a></li>
+        </ul>
+      </div>
+
+      <div id="video-square" class="tab-panel is-active">
+        <div class="video-grid two">
+          <div class="video-card">
+            <video muted loop playsinline preload="metadata" controls>
+              <source src="assets/videos/ogpo_square.mp4" type="video/mp4">
+            </video>
+            <div class="vc-caption"><b>OGPO+ (ours)</b> &mdash; reliable insertion on Square.</div>
+          </div>
+          <div class="video-card">
+            <video muted loop playsinline preload="metadata" controls>
+              <source src="assets/videos/dsrl_square.mp4" type="video/mp4">
+            </video>
+            <div class="vc-caption"><b>DSRL</b> &mdash; steering alone struggles on high-precision insertion.</div>
+          </div>
+        </div>
+      </div>
+
+      <div id="video-toolhang" class="tab-panel">
+        <div class="video-grid three">
+          <div class="video-card">
+            <video muted loop playsinline preload="metadata" controls>
+              <source src="assets/videos/ogpo_toolhang.mp4" type="video/mp4">
+            </video>
+            <div class="vc-caption"><b>OGPO+ (ours)</b> &mdash; completes the full multi-step Tool Hang sequence.</div>
+          </div>
+          <div class="video-card">
+            <video muted loop playsinline preload="metadata" controls>
+              <source src="assets/videos/qc_toolhang.mp4" type="video/mp4">
+            </video>
+            <div class="vc-caption"><b>QC</b> &mdash; off-policy SFT plateaus at partial success.</div>
+          </div>
+          <div class="video-card">
+            <video muted loop playsinline preload="metadata" controls>
+              <source src="assets/videos/dsrl_toolhang.mp4" type="video/mp4">
+            </video>
+            <div class="vc-caption"><b>DSRL</b> &mdash; initial-noise steering cannot re-shape later denoising steps.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="divider">
+
+<!-- ═════════════════════════════════════════════════════════════════
+     ANALYSIS
+═══════════════════════════════════════════════════════════════════ -->
+<section class="block alt" id="analysis">
+  <div class="container-main">
+    <h2 class="section-title">Analysis &amp; Ablations</h2>
+    <hr class="section-rule">
+
+    <div class="tabs-wrap is-toggle">
+      <div class="tabs is-centered is-small is-toggle">
+        <ul id="analysis-tabs">
+          <li class="is-active" data-panel="ana-exploration"><a>Exploration</a></li>
+          <li data-panel="ana-ablation"><a>Ablations</a></li>
+          <li data-panel="ana-limits"><a>Limitations</a></li>
+        </ul>
+      </div>
+
+      <div id="ana-exploration" class="tab-panel is-active">
+        <p class="lead justified">
+          BC policies exhibit <em>mode-seeking</em> behavior: action variance collapses rapidly to a narrow cone of demonstrated trajectories, agnostic to reward.
+          OGPO, in contrast, uses Q-function gradient information indirectly to drive manifold-level expansion toward high-value regions <em>beyond</em> the BC support.
+          UMAP of 64 action samples at critical states on Tool Hang shows that OGPO-trained policies diverge from the BC mode exactly where $\nabla_a Q(s,a)$ points orthogonally to the BC action spread.
+        </p>
+        <figure class="pub-fig">
+          <img src="assets/figures/grad_q_exploration.jpg" alt="UMAP showing OGPO action spread and Q-gradient directions" loading="lazy">
+          <figcaption class="caption">
+            <strong>Support expansion via $\nabla_a Q$.</strong>
+            Actions from OGPO (colored) diverge from BC (gray) at critical states, and do so in the direction of $\nabla_a Q(s,a)$ (red arrows) &mdash; evidence that OGPO's annealed importance ratio $\omega_\theta$ conditions the full GCP chain toward higher-value regions.
+          </figcaption>
+        </figure>
+      </div>
+
+      <div id="ana-ablation" class="tab-panel">
+        <p class="lead">Six findings from systematic ablations (Appendix J):</p>
+        <div class="callout neutral"><strong class="label">1. BPTT &ne; PPO.</strong> Backpropagation through denoising steps often fails catastrophically relative to zero-order PPO.</div>
+        <div class="callout neutral"><strong class="label">2. Best-of-N alone isn't enough.</strong> Best-of-N sampling without a success buffer increases oscillations without improving final performance.</div>
+        <div class="callout neutral"><strong class="label">3. Negative advantages cut both ways.</strong> Removing the negative-advantage contribution to PPO has mixed effects &mdash; it helps stability on some tasks, hurts exploration on others.</div>
+        <div class="callout neutral"><strong class="label">4. Avoid GRPO-style variance norm.</strong> Adding variance normalization to the group loss drastically hurts performance in our regime.</div>
+        <div class="callout neutral"><strong class="label">5. Mean-of-ensemble critic targets.</strong> Pessimistic initial Q-learning drives over-conservatism; mean-of-ensemble target critics are optimal.</div>
+        <div class="callout neutral"><strong class="label">6. Flow vs. diffusion.</strong> OGPO performance is roughly comparable across flow- and diffusion-based instantiations &mdash; the algorithmic insight transfers.</div>
+      </div>
+
+      <div id="ana-limits" class="tab-panel">
+        <p class="lead justified">
+          <strong>Full-policy finetuning can be overkill</strong> when the replay buffer already contains abundant expert-quality data &mdash; in that regime, lighter-weight approaches like residual learning can match OGPO at lower compute.
+          <strong>PPO can over-exploit $Q$</strong>, inducing small oscillations that prevent exact 100% success on some tasks; the success-buffer BC term in OGPO+ is specifically designed to damp this.
+          <strong>Completion speed vs. success rate tension</strong>: sparse $-1$-per-step rewards pull toward faster but less reliable policies; when exacerbated by aggressive Best-of-N, success rates can drop.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="divider">
+
+<!-- ═════════════════════════════════════════════════════════════════
+     BIBTEX
+═══════════════════════════════════════════════════════════════════ -->
+<section class="block" id="bibtex">
+  <div class="container-main">
+    <h2 class="section-title">BibTeX</h2>
+    <hr class="section-rule">
+    <div class="bibtex-wrap">
+      <button class="bibtex-copy" id="bibtex-copy-btn" aria-label="Copy BibTeX"><i class="fas fa-copy"></i> Copy</button>
+<pre class="bibtex-box" id="bibtex-content">@misc{ogpo2026,
+  title        = {Sample-Efficient Full-Finetuning of Generative Control Policies},
+  author       = {Anonymous Authors},
+  year         = {2026},
+  note         = {Under review at ICML 2026}
+}</pre>
+    </div>
+  </div>
+</section>
+
+<footer class="site-footer">
+  <div class="container-main">
+    <p>
+      Hosted on <a href="https://simchowitzlabpublic.github.io/ogpo-site/">simchowitzlabpublic.github.io/ogpo-site</a>.
+      Page design adapted from the <a href="https://pd-perry.github.io/TQL/">TQL</a> and <a href="https://robometer.github.io/">Robometer</a> project pages.
+    </p>
+  </div>
+</footer>
+
+<script>
+(function () {
+  'use strict';
+
+  /* Tabs: generic, works with any [data-panel] inside a .tabs-wrap ul */
+  function bindTabs(tabListSelector) {
+    var tabs = document.querySelectorAll(tabListSelector + ' li[data-panel]');
+    if (!tabs.length) return;
+    var panels = new Set();
+    tabs.forEach(function (t) { panels.add(t.dataset.panel); });
+    tabs.forEach(function (tab) {
+      tab.addEventListener('click', function () {
+        tabs.forEach(function (t) { t.classList.remove('is-active'); });
+        tab.classList.add('is-active');
+        panels.forEach(function (pid) {
+          var el = document.getElementById(pid);
+          if (el) el.classList.toggle('is-active', pid === tab.dataset.panel);
+        });
+      });
+    });
+  }
+  ['#formulation-tabs', '#env-tabs', '#video-tabs', '#analysis-tabs'].forEach(bindTabs);
+
+  /* Scroll progress bar */
+  var pbar = document.getElementById('pbar');
+  function updateBar() {
+    var h = document.documentElement;
+    var scrolled = h.scrollTop / Math.max(1, h.scrollHeight - h.clientHeight);
+    pbar.style.width = (scrolled * 100).toFixed(1) + '%';
+  }
+  window.addEventListener('scroll', updateBar, { passive: true });
+  updateBar();
+
+  /* Scroll spy for navbar */
+  var navLinks = document.querySelectorAll('.navbar-top .nav-links a[href^="#"]');
+  var sectionMap = [];
+  navLinks.forEach(function (link) {
+    var id = link.getAttribute('href').slice(1);
+    var el = document.getElementById(id);
+    if (el) sectionMap.push({ el: el, link: link });
+  });
+  function updateSpy() {
+    var y = window.scrollY + 80;
+    var active = null;
+    for (var i = sectionMap.length - 1; i >= 0; i--) {
+      if (sectionMap[i].el.offsetTop <= y) { active = sectionMap[i]; break; }
+    }
+    navLinks.forEach(function (l) { l.classList.remove('active'); });
+    if (active) active.link.classList.add('active');
+  }
+  window.addEventListener('scroll', updateSpy, { passive: true });
+  updateSpy();
+
+  /* BibTeX copy */
+  var copyBtn = document.getElementById('bibtex-copy-btn');
+  if (copyBtn) {
+    copyBtn.addEventListener('click', function () {
+      var txt = document.getElementById('bibtex-content').textContent;
+      navigator.clipboard.writeText(txt).then(function () {
+        copyBtn.innerHTML = '<i class="fas fa-check"></i> Copied';
+        setTimeout(function () { copyBtn.innerHTML = '<i class="fas fa-copy"></i> Copy'; }, 1600);
+      });
+    });
+  }
+
+  /* IntersectionObserver-based lazy video play on view */
+  if ('IntersectionObserver' in window) {
+    var vio = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        var v = e.target;
+        if (e.isIntersecting) { var p = v.play(); if (p && p.catch) p.catch(function () {}); }
+        else { v.pause(); }
+      });
+    }, { threshold: 0.25 });
+    document.querySelectorAll('.video-card video').forEach(function (v) { vio.observe(v); });
+  }
+})();
+</script>
+
+</body>
+</html>

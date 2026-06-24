@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OGPO — Off-Policy Generative Policy Optimization</title>
+<meta name="description" content="OGPO: a sample-efficient algorithm for full-finetuning of generative control policies. It learns an off-policy critic for data reuse and extracts the policy with PPO over the denoising process, using the critic as a terminal reward.">
+
+<meta property="og:title" content="OGPO: Sample-Efficient Full-Finetuning of Generative Control Policies">
+<meta property="og:description" content="Off-policy critic for sample efficiency, on-policy PPO over the denoising process for expressivity. The only method that finetunes weak BC policies to near-full success with no expert data in the replay buffer.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://simchowitzlabpublic.github.io/ogpo-site/assets/figures/teaser_main.png">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
+
+<!-- MathJax 3 — no custom macros (all notation written out inline for robustness) -->
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    processEscapes: true,
+    packages: {'[+]': ['ams']}
+  },
+  svg: { fontCache: 'global' },
+  startup: { typeset: true }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js" async></script>
+
+<style>
+  :root {
+    --accent:        #C2570C;
+    --accent-dark:   #9A3F08;
+    --accent-soft:   #f7ecdf;
+    --accent-softer: #fcf7f0;
+    --accent-border: #e8c9a6;
+
+    --ogpo:   #c0392b;
+    --critic: #2563eb;
+    --good:   #15803d; --good-bg:#e9f4ec;
+
+    --ink:      #1a1a1c;
+    --ink-soft: #3d3d42;
+    --muted:    #6b6b73;
+    --faint:    #9a9aa2;
+    --divider:  #e8e5e0;
+    --bg:       #ffffff;
+    --bg-alt:   #faf8f4;
+
+    --maxw: 1180px;
+    --readw: 820px;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 3.6rem; -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: var(--bg); color: var(--ink-soft);
+    line-height: 1.62; font-size: 17px; margin: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1,h2,h3,h4 { font-family: 'Space Grotesk', sans-serif; color: var(--ink); line-height: 1.15; }
+  a { color: var(--accent-dark); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  em { color: var(--ink); font-style: italic; }
+  strong { color: var(--ink); font-weight: 600; }
+  p { margin: 0 0 1rem; }
+
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 1.5rem; }
+  .read { max-width: var(--readw); margin-left: auto; margin-right: auto; }
+
+  /* progress + nav */
+  .progress-bar { position: fixed; top: 0; left: 0; right: 0; height: 2px; z-index: 60; pointer-events: none; }
+  .progress-bar-fill { height: 100%; width: 0%; background: var(--accent); }
+
+  nav.top {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(255,255,255,0.88);
+    backdrop-filter: saturate(180%) blur(10px);
+    -webkit-backdrop-filter: saturate(180%) blur(10px);
+    border-bottom: 1px solid var(--divider);
+  }
+  nav.top .inner { max-width: var(--maxw); margin: 0 auto; display: flex; align-items: center; justify-content: space-between; padding: 0.5rem 1.5rem; }
+  nav.top .brand { font-family: 'Space Grotesk'; font-weight: 700; font-size: 1.05rem; color: var(--ink); }
+  nav.top .brand b { color: var(--accent); }
+  nav.top .links { display: flex; gap: 0.05rem; flex-wrap: wrap; }
+  nav.top .links a { color: var(--ink-soft); font-size: 0.82rem; font-weight: 500; padding: 0.3rem 0.55rem; border-radius: 6px; transition: all .15s; }
+  nav.top .links a:hover { background: var(--accent-soft); color: var(--accent-dark); text-decoration: none; }
+  nav.top .links a.active { color: var(--accent-dark); background: var(--accent-soft); }
+  @media (max-width: 920px) { nav.top .links { display: none; } }
+
+  /* hero */
+  .hero { padding: 2.6rem 1.5rem 1.4rem; background: linear-gradient(180deg, var(--accent-softer) 0%, #ffffff 64%); text-align: center; }
+  h1.title {
+    font-family: 'Space Grotesk', sans-serif; font-weight: 700;
+    font-size: clamp(2rem, 4.2vw, 2.7rem); letter-spacing: -0.03em; line-height: 1.12;
+    max-width: 1000px; margin: 0 auto 1.1rem; text-wrap: balance;
+  }
+  h1.title .o { color: var(--accent); }
+
+  .authors { font-size: 0.97rem; color: var(--ink); max-width: 1080px; margin: 0.2rem auto 0.5rem; line-height: 1.8; }
+  .authors .a { white-space: nowrap; margin: 0 0.18rem; }
+  .authors sup { color: var(--accent-dark); font-size: 0.68em; }
+  .affil { color: var(--muted); font-size: 0.92rem; margin: 0.1rem 0 0.15rem; }
+  .meta-line { color: var(--faint); font-size: 0.82rem; margin: 0.1rem 0 0; }
+
+  /* buttons — compact, restrained */
+  .btns { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center; margin: 1.25rem 0 0; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 0.45rem;
+    font-family: 'Space Grotesk', sans-serif; font-weight: 500; font-size: 0.84rem; letter-spacing: 0.01em;
+    padding: 0.44rem 0.9rem; border-radius: 8px; border: 1px solid transparent;
+    transition: background .15s, border-color .15s, color .15s;
+  }
+  .btn i { font-size: 0.95em; }
+  .btn:hover { text-decoration: none; }
+  .btn.dark { background: #232327; color: #fff; }
+  .btn.dark:hover { background: #000; }
+  .btn.solid { background: var(--accent); color: #fff; }
+  .btn.solid:hover { background: var(--accent-dark); }
+  .btn.ghost { background: #fff; color: var(--ink-soft); border-color: var(--divider); }
+  .btn.ghost:hover { border-color: var(--accent); color: var(--accent-dark); }
+
+  /* hero figure */
+  .hero-fig { max-width: 1040px; margin: 1.9rem auto 0; }
+  .hero-fig img { width: 100%; height: auto; border-radius: 10px; display: block; }
+  .hero-fig .cap { font-size: 0.9rem; color: var(--muted); margin-top: 0.75rem; text-align: left; max-width: 980px; margin-left: auto; margin-right: auto; line-height: 1.55; }
+  .hero-fig .cap b { color: var(--ink); }
+
+  /* sections */
+  section { padding: 2.5rem 1.5rem; border-top: 1px solid var(--divider); }
+  section.alt { background: var(--bg-alt); }
+  .eyebrow { font-family:'Space Grotesk'; font-weight:600; font-size:.74rem; letter-spacing:.15em; text-transform:uppercase; color: var(--accent); display:flex; align-items:center; gap:.55rem; margin-bottom:.55rem; }
+  .eyebrow .step { display:inline-grid; place-items:center; width:1.35rem; height:1.35rem; border-radius:50%; background:var(--accent-soft); color:var(--accent-dark); font-size:.72rem; font-weight:700; }
+  h2.h { font-size: clamp(1.5rem, 3vw, 1.95rem); font-weight: 700; letter-spacing: -0.02em; margin: 0 0 0.85rem; max-width: 24ch; }
+  h3.sub { font-size: 1.14rem; font-weight: 600; margin: 1.7rem 0 0.5rem; color: var(--ink); }
+  .lead { font-size: 1.06rem; color: var(--ink-soft); }
+
+  /* figures */
+  figure.f { margin: 1.5rem 0; }
+  figure.f img, figure.f video { width: 100%; height: auto; border-radius: 8px; display: block; border: 1px solid var(--divider); background:#fff; }
+  figure.f figcaption { font-size: 0.89rem; color: var(--muted); margin-top: 0.65rem; line-height: 1.55; }
+  figure.f figcaption b { color: var(--ink); }
+  .fig-frame { background:#fff; border:1px solid var(--divider); border-radius:10px; padding: 1rem; }
+  .fig-frame img { border:none; border-radius:5px; }
+
+  /* callouts */
+  .callout { border-radius: 9px; padding: 0.9rem 1.15rem; margin: 1rem 0; border-left: 3px solid var(--accent); background: var(--accent-soft); font-size: 0.99rem; }
+  .callout .k { font-family:'Space Grotesk'; font-weight:600; color: var(--ink); display:block; margin-bottom:.15rem; }
+  .callout.green { background: var(--good-bg); border-left-color: var(--good); }
+  .callout.neutral { background:#f4f3f1; border-left-color: var(--muted); }
+
+  /* thesis statement (the key idea) */
+  .thesis { background:#fff; border:1px solid var(--divider); border-left:3px solid var(--accent); border-radius:10px; padding:1.15rem 1.35rem; margin:1.5rem 0; }
+  .thesis .k { font-family:'Space Grotesk'; font-weight:600; font-size:.72rem; letter-spacing:.12em; text-transform:uppercase; color:var(--accent-dark); display:block; margin-bottom:.4rem; }
+  .thesis p { margin:0; font-family:'Newsreader', Georgia, serif; font-size:1.22rem; line-height:1.5; color:var(--ink); }
+  .thesis p em { color:var(--accent-dark); }
+
+  /* problem cards */
+  .cards3 { display:grid; grid-template-columns: repeat(3,1fr); gap: 1rem; margin: 1.4rem 0; }
+  @media (max-width: 820px){ .cards3 { grid-template-columns: 1fr; } }
+  .pcard { background:#fff; border:1px solid var(--divider); border-radius:11px; padding:1.05rem 1.15rem; }
+  .pcard .tag { font-family:'Space Grotesk'; font-weight:600; font-size:.72rem; letter-spacing:.06em; text-transform:uppercase; color: var(--critic); }
+  .pcard h4 { margin:.35rem 0 .4rem; font-size:1.06rem; }
+  .pcard p { font-size:.93rem; color:var(--ink-soft); margin:0; }
+  .pcard .lim { margin-top:.65rem; font-size:.85rem; color:var(--ogpo); font-weight:500; }
+
+  /* equations */
+  .eqn { background:#fff; border:1px solid var(--divider); border-radius:9px; padding:.6rem 1rem; margin:1rem 0; overflow-x:auto; }
+  .eqn .tag { display:block; font-family:'Space Grotesk'; font-size:.72rem; letter-spacing:.05em; text-transform:uppercase; color:var(--accent-dark); margin-bottom:.05rem; }
+
+  /* numbered method steps */
+  .steps { margin: 1.2rem 0; }
+  .stepi { display:flex; gap:1rem; padding:0.95rem 0; border-top:1px solid var(--divider); }
+  .stepi:first-child { border-top:none; }
+  .stepi .num { flex:0 0 auto; display:grid; place-items:center; width:1.85rem; height:1.85rem; border-radius:50%; background:var(--accent-soft); color:var(--accent-dark); font-family:'Space Grotesk'; font-weight:700; font-size:.92rem; }
+  .stepi .body h4 { margin:.1rem 0 .3rem; font-size:1.03rem; }
+  .stepi .body p { margin:0; font-size:.97rem; }
+
+  /* algorithm box */
+  .algo { background:#1b1b22; color:#e6e3ee; border-radius:10px; padding:1rem 1.25rem; font-family:'JetBrains Mono',monospace; font-size:.8rem; line-height:1.7; overflow-x:auto; margin:1.2rem 0; }
+  .algo .c { color:#8b88a4; } .algo .kw { color:#e0a06a; } .algo .v { color:#93c5fd; }
+  .algo .h { color:#fff; font-family:'Space Grotesk'; font-weight:600; display:block; margin-bottom:.4rem; letter-spacing:.03em; }
+
+  /* tabs */
+  .tabs { margin: 1.1rem 0; }
+  .tabbar { display:flex; flex-wrap:wrap; gap:.4rem; border-bottom:1px solid var(--divider); padding-bottom:.55rem; margin-bottom:1rem; }
+  .tabbar button { font-family:'Space Grotesk'; font-weight:500; font-size:.88rem; color:var(--ink-soft); background:#fff; border:1px solid var(--divider); border-radius:7px; padding:.38rem .85rem; cursor:pointer; transition:all .15s; }
+  .tabbar button:hover { border-color:var(--accent-border); color:var(--accent-dark); }
+  .tabbar button.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .panel { display:none; animation: fade .22s ease; }
+  .panel.active { display:block; }
+  @keyframes fade { from{opacity:0; transform:translateY(3px);} to{opacity:1; transform:none;} }
+
+  /* capability table */
+  .tbl-scroll { overflow-x:auto; }
+  table.cap { width:100%; border-collapse:separate; border-spacing:0; font-size:.93rem; background:#fff; border:1px solid var(--divider); border-radius:11px; overflow:hidden; margin:1rem 0; }
+  table.cap th, table.cap td { padding:.65rem .55rem; text-align:center; border-bottom:1px solid var(--divider); }
+  table.cap thead th { background:var(--ink); color:#fff; font-family:'Space Grotesk'; font-weight:600; font-size:.86rem; }
+  table.cap thead th.ours { background: var(--accent-dark); }
+  table.cap td.crit { text-align:left; font-weight:500; color:var(--ink); white-space:nowrap; }
+  table.cap td.ourscol { background: var(--accent-softer); }
+  table.cap tr:last-child td { border-bottom:none; }
+  .mk { display:inline-grid; place-items:center; width:1.3rem; height:1.3rem; border-radius:5px; font-size:.78rem; font-weight:700; margin:0 1px; color:#fff; }
+  .mk.lv4 { background: #15803d;} .mk.lv3 { background: #b45309;} .mk.lv2 { background: #c2410c;} .mk.lv1 { background: #b91c1c;}
+  .legend { font-size:.83rem; color:var(--muted); margin-top:.55rem; display:flex; flex-wrap:wrap; gap:.35rem 1rem; align-items:center; }
+  .legend .mk { width:1.1rem; height:1.1rem; font-size:.7rem; }
+
+  /* findings */
+  .finds { display:grid; grid-template-columns:1fr 1fr; gap:.75rem; margin:1.1rem 0; }
+  @media (max-width:760px){ .finds{ grid-template-columns:1fr; } }
+  .find { background:#fff; border:1px solid var(--divider); border-radius:9px; padding:.8rem 1rem; font-size:.94rem; }
+  .find .n { font-family:'Space Grotesk'; font-weight:700; color:var(--accent); margin-right:.4rem; }
+  .find b { color:var(--ink); }
+
+  /* video grid */
+  .vgrid { display:grid; gap:1rem; grid-template-columns:1fr; }
+  @media (min-width:680px){ .vgrid.two{grid-template-columns:1fr 1fr;} .vgrid.three{grid-template-columns:1fr 1fr 1fr;} }
+  .vcard { background:#fff; border:1px solid var(--divider); border-radius:11px; overflow:hidden; }
+  .vcard video { width:100%; display:block; background:#000; }
+  .vcard .vc { padding:.55rem .85rem; font-size:.85rem; color:var(--ink-soft); }
+  .vcard .vc b { color:var(--accent-dark); }
+
+  /* bibtex */
+  .bib { position:relative; }
+  .bib pre { background:#1b1b22; color:#cdd6f4; border-radius:11px; padding:1.1rem 1.2rem; font-family:'JetBrains Mono',monospace; font-size:.8rem; line-height:1.6; overflow-x:auto; white-space:pre; margin:0; }
+  .bib button { position:absolute; top:.65rem; right:.65rem; background:rgba(255,255,255,.1); color:#cdd6f4; border:1px solid rgba(255,255,255,.18); border-radius:6px; padding:.28rem .55rem; cursor:pointer; font-size:.74rem; }
+  .bib button:hover { background:rgba(255,255,255,.22); }
+
+  footer { padding:2.2rem 1.5rem; background:#faf8f4; border-top:1px solid var(--divider); text-align:center; color:var(--muted); font-size:.86rem; }
+  footer a { color:var(--accent-dark); }
+</style>
+</head>
+<body id="top">
+
+<div class="progress-bar"><div class="progress-bar-fill" id="pbar"></div></div>
+
+<nav class="top">
+  <div class="inner">
+    <a href="#top" class="brand"><b>OGPO</b></a>
+    <div class="links">
+      <a href="#problem">Problem</a>
+      <a href="#insight">Insight</a>
+      <a href="#method">Method</a>
+      <a href="#plus">OGPO+</a>
+      <a href="#robust">Stability</a>
+      <a href="#results">Results</a>
+      <a href="#rollouts">Rollouts</a>
+      <a href="#why">Analysis</a>
+      <a href="#bibtex">Cite</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ══ HERO ══════════════════════════════════════════ -->
+<header class="hero">
+  <div class="wrap">
+    <h1 class="title"><span class="o">OGPO</span>: Sample-Efficient Full-Finetuning of Generative Control Policies</h1>
+
+    <div class="authors" id="authors">
+      <span class="a">Sarvesh Patil<sup>a,§</sup></span>
+      <span class="a">Mitsuhiko Nakamoto<sup>b,§</sup></span>
+      <span class="a">Manan Agarwal<sup>a,‡</sup></span>
+      <span class="a">Shashwat Saxena<sup>a,‡</sup></span>
+      <span class="a">Jesse Zhang<sup>c,‡</sup></span>
+      <span class="a">Giri Anantharaman<sup>a</sup></span>
+      <span class="a">Cleah Winston<sup>c</sup></span>
+      <span class="a">Chaoyi Pan<sup>a</sup></span>
+      <span class="a">Douglas Chen<sup>a</sup></span>
+      <span class="a">Nai-Chieh Huang<sup>a</sup></span>
+      <span class="a">Zeynep Temel<sup>a</sup></span>
+      <span class="a">Oliver Kroemer<sup>a</sup></span>
+      <span class="a">Sergey Levine<sup>b</sup></span>
+      <span class="a">Abhishek Gupta<sup>c,d</sup></span>
+      <span class="a">Hongkai Dai<sup>d,†</sup></span>
+      <span class="a">Paarth Shah<sup>d,†</sup></span>
+      <span class="a">Max Simchowitz<sup>a,†</sup></span>
+    </div>
+    <p class="affil"><sup>a</sup>Carnegie Mellon University &nbsp;·&nbsp; <sup>b</sup>UC Berkeley &nbsp;·&nbsp; <sup>c</sup>University of Washington &nbsp;·&nbsp; <sup>d</sup>Toyota Research Institute</p>
+    <p class="meta-line"><sup>§</sup>Project lead &nbsp;·&nbsp; <sup>‡</sup>Equal contribution &nbsp;·&nbsp; <sup>†</sup>Equal advising &nbsp;·&nbsp; Under review, ICML 2026</p>
+
+    <div class="btns">
+      <a class="btn dark" href="https://arxiv.org/abs/2605.03065" target="_blank" rel="noopener"><i class="ai ai-arxiv"></i> arXiv</a>
+      <a class="btn solid" href="assets/paper/ogpo_paper_arxiv_main.pdf" target="_blank" rel="noopener"><i class="fas fa-file-pdf"></i> Paper</a>
+      <a class="btn ghost" href="https://github.com/simchowitzlabpublic/OGPO_public" target="_blank" rel="noopener"><i class="fab fa-github"></i> Code</a>
+      <a class="btn ghost" href="#bibtex"><i class="fas fa-quote-right"></i> BibTeX</a>
+    </div>
+
+    <figure class="hero-fig">
+      <img src="assets/figures/teaser_main.png" alt="Figure 1: the bi-level MDP that OGPO severs at the denoising boundary; Transport sample-efficiency curves; and BC-versus-OGPO action distributions over the critic's value landscape." loading="eager">
+      <figcaption class="cap">
+        <b>OGPO enables sample-efficient full-policy finetuning of generative control policies.</b>
+        <em>Left:</em> a generative control policy (GCP) produces an action through a sequential denoising computation &mdash; a denoising MDP at each environment step. Where prior work (Ren et al., 2024) embeds this denoising MDP into the environment to form a bi-level MDP, OGPO severs the connection and instead maximizes an off-policy critic as a terminal reward, via PPO-style optimization over the denoising trajectories.
+        <em>Middle:</em> on challenging tasks such as Robomimic Transport, OGPO substantially improves sample efficiency over prior GCP-finetuning methods, even under limited hyperparameter tuning.
+        <em>Right:</em> despite this efficiency, OGPO retains non-trivial variance in its action distribution, and hence its capacity to explore; the remaining variance is squeezed to lie perpendicular to the critic gradient $\nabla_a Q(s,a)$, where it does not conflict with performance.
+      </figcaption>
+    </figure>
+  </div>
+</header>
+
+<!-- ══ ABSTRACT ══════════════════════════════════════ -->
+<section id="overview">
+  <div class="wrap read">
+    <div class="eyebrow">Abstract</div>
+    <h2 class="h">Full-finetuning, kept sample-efficient</h2>
+    <p class="lead">
+      Generative control policies (GCPs) &mdash; diffusion- and flow-based control policies &mdash; have emerged as effective parameterizations for robot learning. This work introduces <strong>Off-Policy Generative Policy Optimization (OGPO)</strong>, a sample-efficient algorithm for finetuning GCPs that maintains off-policy critic networks to maximize data reuse and propagates policy gradients through the full generative process via a modified PPO objective, using the critics as the terminal reward.
+    </p>
+    <p>
+      OGPO achieves state-of-the-art performance on manipulation tasks spanning multi-task settings, high-precision insertion, and dexterous control. To our knowledge, it is also the only method that can finetune poorly-initialized behavior-cloning policies to near-full task success with no expert data in the online replay buffer, and does so with little task-specific hyperparameter tuning. Through extensive empirical study, we show that OGPO substantially outperforms alternatives based on policy steering and residual corrections, and we identify the mechanisms behind its performance.
+    </p>
+  </div>
+</section>
+
+<!-- ══ THE PROBLEM ═══════════════════════════════════ -->
+<section id="problem" class="alt">
+  <div class="wrap read">
+    <div class="eyebrow"><span class="step">1</span> The problem</div>
+    <h2 class="h">Sample efficiency or expressivity, but not both</h2>
+    <p class="lead">
+      A behavior-cloning policy rarely succeeds zero-shot across the range of conditions met at deployment, and the natural remedy &mdash; improving it autonomously with reinforcement learning &mdash; is bounded by the cost of real interaction. Existing methods for finetuning generative control policies sit at two ends of a single tradeoff, between data efficiency and the extent of policy improvement they permit.
+    </p>
+    <p>
+      Methods built for sample efficiency pair off-policy critic learning with a <em>partial</em> update to the generative process. They learn quickly when the base policy already covers good actions, but cannot easily explore beyond it:
+    </p>
+
+    <div class="cards3">
+      <div class="pcard">
+        <span class="tag">Steering · DSRL</span>
+        <h4>Steer the initial noise</h4>
+        <p>Freeze the GCP and learn a policy over the initial generation noise. Off-policy and cheap, but effective only where the base policy already covers good actions.</p>
+        <p class="lim">Later denoising steps remain fixed.</p>
+      </div>
+      <div class="pcard">
+        <span class="tag">Residual · EXPO</span>
+        <h4>Add a residual correction</h4>
+        <p>Freeze the GCP and learn a small additive correction to the final action. Well suited to a strong base policy needing only minor adjustment.</p>
+        <p class="lim">Cannot expand the support of the action distribution.</p>
+      </div>
+      <div class="pcard">
+        <span class="tag">Extraction · QC</span>
+        <h4>Imitate the best action</h4>
+        <p>Train an off-policy critic, then finetune the GCP by supervised cloning toward Best-of-N actions ranked by the critic.</p>
+        <p class="lim">Supervised cloning cannot grow new behavior; it plateaus and is tuning-sensitive.</p>
+      </div>
+    </div>
+
+    <p>
+      At the other end, on-policy policy-gradient methods such as DPPO finetune the entire generative process and improve aggressively, but every update consumes fresh interaction, and the effective horizon grows from the task horizon $T$ to $K \times T$ over the $K$ denoising steps. The result is expressive but sample-hungry. OGPO is designed to occupy neither extreme.
+    </p>
+
+    <figure class="f">
+      <div class="fig-frame"><img src="assets/figures/method_landscape.png" alt="Comparison of off-policy RL algorithms for generative control policies: steering and residual learning, Best-of-N supervised finetuning and backprop-through-time, and OGPO." loading="lazy"></div>
+      <figcaption>
+        <b>The landscape of GCP finetuning.</b> <em>Left:</em> DSRL steers the initial noise; EXPO adds a residual to the final action. <em>Center:</em> QC distills Best-of-N actions ranked by the critic; backprop-through-time (BPTT) differentiates the critic through the whole denoising chain. <em>Right:</em> OGPO uses an ensemble of critics to form a relative advantage that conditions the action likelihoods across the entire chain.
+      </figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ══ THE INSIGHT ═══════════════════════════════════ -->
+<section id="insight">
+  <div class="wrap read">
+    <div class="eyebrow"><span class="step">2</span> The insight</div>
+    <h2 class="h">A sharp asymmetry in the cost of samples</h2>
+    <p class="lead">
+      OGPO builds on the bi-level view of GCP optimization introduced by Ren et al. (2024). Producing a single action requires running a denoising trajectory $a_{t,K} \to a_{t,K-1} \to \cdots \to a_{t,0}$, which unfolds an inner <em>denoising</em> MDP over generation steps, nested inside the outer <em>environment</em> MDP over executed actions.
+    </p>
+    <p>
+      The two levels differ sharply in cost. A step in the environment moves a physical robot and is therefore expensive; a step in the denoising process is a single forward pass, and is therefore cheap and trivially parallelizable. OGPO is organized entirely around exploiting this asymmetry.
+    </p>
+
+    <figure class="f">
+      <div class="fig-frame"><img src="assets/figures/bilevel_main.png" alt="The bi-level MDP: denoising trajectories nested inside environment transitions, with OGPO severing the MDP at the end of each denoising trajectory and using the critic Q as a terminal reward." loading="lazy"></div>
+      <figcaption>
+        <b>Severing the bi-level MDP.</b> Within each block the policy denoises an action ($a^K \to \cdots \to a^0$); between blocks, the environment transitions. OGPO cuts the MDP at the end of every denoising trajectory and supplies the off-policy critic $Q(s_0, a_0^0)$ as a terminal reward for the inner denoising MDP.
+      </figcaption>
+    </figure>
+
+    <div class="thesis">
+      <span class="k">The key idea</span>
+      <p>Learn the critic <em>off-policy</em> in the expensive environment MDP, so that every real transition is reused; then extract the policy with <em>on-policy</em> PPO entirely within the cheap denoising MDP, using the critic as a terminal reward. The result is the sample efficiency of temporal-difference learning together with the expressivity of full-policy updates.</p>
+    </div>
+
+    <p>
+      Because the denoising trajectories are generated in the policy's own imagination, OGPO avoids the two pathologies of differentiating through a GCP: it never backpropagates through the denoising chain, and it never differentiates the critic, $\nabla_a Q$, which is unreliable in contact-rich tasks. The policy update is zeroth-order throughout.
+    </p>
+  </div>
+</section>
+
+<!-- ══ THE METHOD ════════════════════════════════════ -->
+<section id="method" class="alt">
+  <div class="wrap read">
+    <div class="eyebrow"><span class="step">3</span> The method</div>
+    <h2 class="h">On-policy PPO for off-policy policy extraction</h2>
+    <p class="lead">
+      OGPO treats each denoising trajectory as a short sequence to be optimized with PPO, in which the only reward is supplied at the end &mdash; the critic's value of the final action. For a state $s_t$ and a sampled trajectory $a_{t,K:0}$, the objective is the standard clipped surrogate, applied to the denoising trajectory alone:
+    </p>
+
+    <div class="eqn">
+      <span class="tag">PPO over the denoising trajectory, critic as terminal reward</span>
+      $$\ell_{\mathrm{PPO}}(\theta;\, s_t, a_{t,K:0}, \hat V)=\min\!\big(\omega_\theta\, \hat A,\ \mathrm{clip}(\omega_\theta,\,1-\epsilon,\,1+\epsilon)\,\hat A\big)$$
+      $$\omega_\theta=\prod_{k=1}^{K}\frac{\pi_\theta(a_{t,k-1}\mid s_t,a_{t,k})}{\pi_{\bar\theta}(a_{t,k-1}\mid s_t,a_{t,k})},\qquad \hat A=Q_{\mathrm{targ}}(s_t,a_{t,0})-\hat V$$
+    </div>
+
+    <p>
+      Because no reward is dispensed at intermediate denoising steps, $\hat A$ is exactly the Monte-Carlo return of the trajectory. The ratio $\omega_\theta$ is an annealed importance ratio over the whole chain, so a single advantage conditions every generation step toward higher-value actions. The procedure rests on three components.
+    </p>
+
+    <div class="steps">
+      <div class="stepi"><div class="num">1</div><div class="body">
+        <h4>Reuse every real transition</h4>
+        <p>An ensemble of $M$ critics is trained off-policy with the standard temporal-difference loss over a long-horizon replay buffer. Targets use the mean over the ensemble; ablations show this is preferable to pessimistic min-aggregation in the sparse-reward setting.</p>
+      </div></div>
+      <div class="stepi"><div class="num">2</div><div class="body">
+        <h4>Sample denoising trajectories in parallel</h4>
+        <p>By analogy to GRPO in language-model post-training, a buffer state $s_t$ plays the role of a prompt and each denoising trajectory the role of a response. We draw $N_{\mathrm{batch}}$ states and $N_{\mathrm{group}}$ trajectories per state, all in parallel and at no environment cost, and average the loss:</p>
+        <div class="eqn">
+          <span class="tag">Group-averaged objective</span>
+          $$\hat{\mathcal L}_{\mathrm{PPO}}(\theta)=\frac{1}{N_{\mathrm{tot}}}\sum_i\sum_j \ell_{\mathrm{PPO}}\!\big(\theta;\, s^{(i)}, a_{K:0}^{(i,j)}, \hat V^{(i)}\big)$$
+        </div>
+      </div></div>
+      <div class="stepi"><div class="num">3</div><div class="body">
+        <h4>Estimate the baseline from the same samples</h4>
+        <p>Parallel sampling yields a Monte-Carlo value baseline directly, $\hat V^{(i)} = \tfrac{1}{N_{\mathrm{group}}}\sum_j Q_{\mathrm{targ}}(s^{(i)}, a_0^{(i,j)})$, so OGPO requires no separate value network.</p>
+      </div></div>
+      <div class="stepi"><div class="num">4</div><div class="body">
+        <h4>Debias the noise for flow policies</h4>
+        <p>Flow ODEs have singular per-step likelihoods, leaving the PPO ratio ill-defined. OGPO injects Gaussian noise at each flow step to make the likelihoods non-singular, and applies a stochastic-interpolant correction so that the per-step marginals continue to match standard ODE sampling.</p>
+      </div></div>
+    </div>
+
+    <div class="algo">
+      <span class="h">Algorithm — OGPO (abbreviated)</span>
+<span class="kw">for</span> each environment step <span class="kw">until</span> done:
+  execute  a_t ~ <span class="v">π̄</span>(·|s_t);  push (s_t, a_t, r_t, s_{t+1}, done) → buffer 𝓑
+  <span class="c"># critic update — off-policy, sample-efficient</span>
+  update critics φ₁…φ_M with the TD error over batches from 𝓑
+  <span class="c"># actor update — on-policy PPO, in the GCP's imagination</span>
+  <span class="kw">for</span> i = 1…N_batch:
+     sample state s⁽ⁱ⁾ ~ 𝓑;  roll N_group denoising trajectories a⁽ⁱ,ʲ⁾ ~ <span class="v">π̄</span>(·|s⁽ⁱ⁾)
+     baseline  V̂⁽ⁱ⁾ ← mean_j Q_targ(s⁽ⁱ⁾, a₀⁽ⁱ,ʲ⁾)
+  update actor with the aggregated PPO loss   <span class="c"># no BPTT, no ∇ₐQ</span>
+  EMA targets:  θ̄ ← (1−τ)θ̄ + τθ;   φ̄ ← (1−τ)φ̄ + τφ
+    </div>
+
+    <figure class="f">
+      <div class="fig-frame"><img src="assets/figures/pos_neg_gradients.png" alt="Best-of-N supervised cloning gives only positive gradients; BPTT gives exploding or vanishing gradients; advantage-based PPO gives smooth positive and negative gradients across the chain." loading="lazy"></div>
+      <figcaption>
+        <b>Why an advantage, rather than imitation or backpropagation.</b> Best-of-N cloning provides only positive gradients toward a single action. BPTT pushes the critic gradient through the whole chain and tends to explode or vanish. OGPO's advantage gives a smooth signal of both signs, conditioning the denoising likelihoods toward better actions and away from worse ones.
+      </figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ══ OGPO+ ═════════════════════════════════════════ -->
+<section id="plus">
+  <div class="wrap read">
+    <div class="eyebrow"><span class="step">4</span> OGPO+</div>
+    <h2 class="h">Grounding the policy in what already worked</h2>
+    <p class="lead">
+      Aggressive policy extraction has a characteristic failure mode. Under the sparse, &minus;1-per-step reward typical of manipulation, maximizing return trades completion <em>rate</em> against completion <em>speed</em>, and OGPO may learn to finish quickly at the expense of reliability. OGPO+ adds two modifications that address this while recovering further sample efficiency.
+    </p>
+
+    <h3 class="sub">Behavior cloning from a success buffer</h3>
+    <p>
+      We maintain a success buffer $\mathcal{D}_{\mathrm{succ}} \subseteq \mathcal{D}_{\mathrm{roll}}$ of transitions from episodes that succeeded, and add a small cloning loss on it. The term is asymmetric: it raises the likelihood of empirically successful actions without lowering that of failures, so it places a floor under the modes that the PPO objective is allowed to abandon.
+    </p>
+    <div class="eqn">
+      <span class="tag">OGPO+ total loss</span>
+      $$\mathcal L_{\mathrm{Total}}(\theta)=\mathcal L_{\mathrm{PPO}}(\theta)+\lambda_{\mathrm{BC}}\,\mathcal L_{\mathrm{BC}}(\theta),\qquad \mathcal L_{\mathrm{BC}}(\theta)=\mathbb{E}_{(s,a)\sim\mathcal{D}_{\mathrm{succ}}}\big[\,\ell_{\mathrm{BC}}\big(\bar\pi_\theta(\cdot\mid s),\,a\big)\big]$$
+    </div>
+
+    <h3 class="sub">Best-of-N inference (optional)</h3>
+    <p>
+      At deployment we may sample $N$ candidate actions and execute the one the critic rates highest, exploiting the gap between verifying and generating a good action:
+    </p>
+    <div class="eqn">
+      <span class="tag">Best-of-N planning</span>
+      $$a_{\mathrm{BoN},t}=\operatorname*{arg\,max}\big\{\,Q_{\mathrm{targ}}(s_t, a_{t,0}^{(n)}) \;:\; a_{t,0}^{(1)},\dots,a_{t,0}^{(N)} \overset{\mathrm{iid}}{\sim} \pi_{\bar\theta}(\cdot\mid s_t)\big\}$$
+    </div>
+
+    <div class="callout green">
+      <span class="k">What actually carries the gain</span>
+      Because OGPO already extracts policies aggressively, Best-of-N adds only marginal performance. The success buffer is the decisive ingredient: it both damps over-exploitation of the critic and supports learning when successes are infrequent.
+    </div>
+
+    <figure class="f">
+      <img src="assets/figures/teaser_ogpo_vs_plus.png" alt="OGPO compared with OGPO+ on Square, Tool Hang, and Transport, showing faster and higher convergence for OGPO+." loading="lazy">
+      <figcaption><b>From OGPO to OGPO+.</b> Success rate against environment steps on three Robomimic tasks. Grounding in the success buffer makes OGPO+ converge faster, and to higher and steadier success, than the base method.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ══ STABILITY ═════════════════════════════════════ -->
+<section id="robust" class="alt">
+  <div class="wrap read">
+    <div class="eyebrow"><span class="step">5</span> Stability</div>
+    <h2 class="h">Surviving the offline-to-online transition</h2>
+    <p class="lead">
+      Full-policy finetuning is expressive enough to over-exploit an imperfect critic, and this is most visible at the transition from offline pretraining to online RL. There, the critic ensemble has not yet reached agreement on actions outside the offline support, and that disagreement passes directly into the policy gradient &mdash; the familiar performance "dip."
+    </p>
+    <p>
+      Rather than altering the critic update, OGPO modifies the policy-extraction step to act only where the ensemble agrees. For each candidate action it uses a sign-consensus, or <em>conservative</em>, advantage:
+    </p>
+    <div class="eqn">
+      <span class="tag">Conservative advantage (sign consensus across the ensemble)</span>
+      $$\hat A^{\mathrm{cons}}_i=\begin{cases}\min_m A_{i,m} & \text{if } \min_m A_{i,m}>0,\\[2pt]\max_m A_{i,m} & \text{if } \max_m A_{i,m}<0,\\[2pt]0 & \text{otherwise.}\end{cases}$$
+    </div>
+    <p style="font-size:.96rem;color:var(--muted)">
+      The advantage is non-zero only when every ensemble member agrees on its sign, and then takes the most conservative magnitude consistent with that sign. Actions on which the ensemble disagrees contribute no gradient until on-policy data restores consensus, at which point the update recovers automatically.
+    </p>
+
+    <figure class="f">
+      <img src="assets/figures/conservative_adv.png" alt="OGPO with conservative advantages compared against Cal-QL and WSRL across the offline-to-online transition." loading="lazy">
+      <figcaption><b>Conservative advantages against warm-starting recipes.</b> Sign-consensus advantages reduce the early offline-to-online dip without slowing late convergence, in a regime where high-update-to-data and pessimistic-critic recipes (Cal-QL, WSRL) fall short.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ══ RESULTS ═══════════════════════════════════════ -->
+<section id="results">
+  <div class="wrap">
+    <div class="read">
+      <div class="eyebrow"><span class="step">6</span> Results</div>
+      <h2 class="h">Where full-finetuning earns its cost</h2>
+      <p class="lead">
+        Every method begins from the same flow BC checkpoint, clipped to at most 50% success, and finetunes online with no offline or expert data in the replay buffer &mdash; the regime that reflects real deployment. We evaluate across three families that span the hard parts of robot learning: multi-task long-horizon control (Franka Kitchen), high-precision insertion (Robomimic), and dexterous manipulation (Adroit).
+      </p>
+
+      <h3 class="sub">Roughly 7&times; the sample efficiency of on-policy DPPO</h3>
+      <p>
+        OGPO+ and DPPO differ in a single respect: OGPO+ severs the bi-level MDP and uses an off-policy critic as a terminal reward, whereas DPPO applies on-policy PPO to the entire bi-level MDP. That one change makes DPPO take on the order of 7&times; longer to reach the success rate OGPO+ attains, and OGPO+ exceeds DPPO's own reported numbers in both efficiency and final performance on every shared task.
+      </p>
+    </div>
+
+    <figure class="f"><img src="assets/figures/ogpo_vs_dppo.png" alt="OGPO+ reaches high success far sooner than DPPO as a function of environment steps." loading="lazy">
+      <figcaption class="read" style="margin-left:auto;margin-right:auto;"><b>Off-policy against on-policy.</b> Success rate versus environment steps: OGPO+ (off-policy critic with denoising-MDP PPO) against DPPO (fully on-policy). Note the difference in horizontal scale.</figcaption>
+    </figure>
+
+    <div class="read"><h3 class="sub">Across environments</h3></div>
+    <div class="tabs" id="env-tabs">
+      <div class="read tabbar">
+        <button class="active" data-t="env-robomimic">Robomimic</button>
+        <button data-t="env-kitchen">Franka Kitchen</button>
+        <button data-t="env-adroit">Adroit</button>
+        <button data-t="env-all">All baselines</button>
+      </div>
+
+      <div class="panel active" id="env-robomimic">
+        <div class="read callout"><span class="k">High-precision insertion</span> Square (medium horizon), Tool&nbsp;Hang (long horizon, multi-step), and Transport (bi-manual). The base policy is weak here, so steering and residual methods stall while full-policy OGPO continues to improve.</div>
+        <figure class="f"><img src="assets/figures/results_robomimic.png" alt="Robomimic success-rate curves for OGPO and OGPO+ against DSRL, EXPO, and QC on Square, Tool Hang, and Transport." loading="lazy">
+          <figcaption class="read" style="margin-left:auto;margin-right:auto;"><b>Robomimic.</b> OGPO and OGPO+ converge to high success on all three insertion tasks, including long-horizon Tool Hang and bi-manual Transport, where off-policy baselines plateau or destabilize.</figcaption></figure>
+      </div>
+
+      <div class="panel" id="env-kitchen">
+        <div class="read callout"><span class="k">Multi-task, mixed data quality</span> A 9-DoF Franka manipulating four objects, with complete, mixed-order, and partial demonstrations. The weak, partial initialization is exactly where steering and residual methods tend to break down.</div>
+        <figure class="f"><img src="assets/figures/results_kitchen.png" alt="Franka Kitchen success-rate curves for the Complete, Mixed, and Partial demonstration settings." loading="lazy">
+          <figcaption class="read" style="margin-left:auto;margin-right:auto;"><b>Franka Kitchen.</b> OGPO handles the complete, mixed, and partial regimes, learning multi-step behavior even when the demonstrations are low-quality or truncated.</figcaption></figure>
+      </div>
+
+      <div class="panel" id="env-adroit">
+        <div class="read callout neutral"><span class="k">Where OGPO is matched, not dominant</span> On the 24-DoF Adroit hand, with dense rewards and proficient expert data, small residual corrections suffice, and residual learning (EXPO) is strong. OGPO remains competitive, but its full expressivity is not required in this regime.</div>
+        <figure class="f"><img src="assets/figures/results_adroit.png" alt="Adroit Hand results for Door, Hammer, Pen, and Relocate." loading="lazy">
+          <figcaption class="read" style="margin-left:auto;margin-right:auto;"><b>Adroit (Door, Hammer, Pen, Relocate).</b> With dense rewards and strong expert data, residual learning is well matched to the task; OGPO is competitive but does not need its full expressivity here.</figcaption></figure>
+      </div>
+
+      <div class="panel" id="env-all">
+        <div class="read callout"><span class="k">The full comparison</span> OGPO and OGPO+ against all off-policy baselines across the benchmark suite.</div>
+        <figure class="f"><img src="assets/figures/results_baselines_all.png" alt="Comprehensive comparison of OGPO and OGPO+ against all off-policy baselines across tasks." loading="lazy">
+          <figcaption class="read" style="margin-left:auto;margin-right:auto;"><b>OGPO against all off-policy baselines.</b> Across the suite, OGPO and OGPO+ are the only methods strong on mixed and partial data, high-precision, and long-horizon tasks at once.</figcaption></figure>
+      </div>
+    </div>
+
+    <div class="read">
+      <h3 class="sub">A method without a weak regime</h3>
+      <p>Read across the tasks, the pattern is consistent: each partial-finetuning method has a regime in which it fails, while OGPO is strong everywhere except dense, dexterous control, where residual learning is the more natural choice.</p>
+    </div>
+
+    <div class="read tbl-scroll">
+      <table class="cap">
+        <thead>
+          <tr><th style="text-align:left">Criterion</th><th class="ours">OGPO</th><th>QC</th><th>DSRL</th><th>EXPO</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="crit">Mixed data quality</td>
+            <td class="ourscol"><span class="mk lv4">✓</span><span class="mk lv4">✓</span></td>
+            <td><span class="mk lv4">✓</span><span class="mk lv2">◔</span></td>
+            <td><span class="mk lv2">◔</span><span class="mk lv2">◔</span></td>
+            <td><span class="mk lv1">✗</span><span class="mk lv1">✗</span></td></tr>
+          <tr><td class="crit">High-precision tasks</td>
+            <td class="ourscol"><span class="mk lv4">✓</span><span class="mk lv4">✓</span></td>
+            <td><span class="mk lv3">~</span><span class="mk lv2">◔</span></td>
+            <td><span class="mk lv1">✗</span><span class="mk lv1">✗</span></td>
+            <td><span class="mk lv2">◔</span><span class="mk lv2">◔</span></td></tr>
+          <tr><td class="crit">Partial demonstrations</td>
+            <td class="ourscol"><span class="mk lv4">✓</span><span class="mk lv4">✓</span></td>
+            <td><span class="mk lv4">✓</span><span class="mk lv4">✓</span></td>
+            <td><span class="mk lv3">~</span><span class="mk lv2">◔</span></td>
+            <td><span class="mk lv1">✗</span><span class="mk lv1">✗</span></td></tr>
+          <tr><td class="crit">Long horizon</td>
+            <td class="ourscol"><span class="mk lv4">✓</span><span class="mk lv4">✓</span></td>
+            <td><span class="mk lv2">◔</span><span class="mk lv1">✗</span></td>
+            <td><span class="mk lv2">◔</span><span class="mk lv1">✗</span></td>
+            <td><span class="mk lv1">✗</span><span class="mk lv1">✗</span></td></tr>
+          <tr><td class="crit">Dense / dexterous</td>
+            <td class="ourscol"><span class="mk lv3">~</span><span class="mk lv2">◔</span></td>
+            <td><span class="mk lv3">~</span><span class="mk lv2">◔</span></td>
+            <td><span class="mk lv2">◔</span><span class="mk lv1">✗</span></td>
+            <td><span class="mk lv4">✓</span><span class="mk lv4">✓</span></td></tr>
+          <tr><td class="crit">High sample efficiency</td>
+            <td class="ourscol"><span class="mk lv4">✓</span><span class="mk lv4">✓</span></td>
+            <td><span class="mk lv3">~</span><span class="mk lv1">✗</span></td>
+            <td><span class="mk lv1">✗</span><span class="mk lv1">✗</span></td>
+            <td><span class="mk lv2">◔</span><span class="mk lv1">✗</span></td></tr>
+        </tbody>
+      </table>
+      <div class="legend">
+        <span><span class="mk lv4">✓</span> solves all tasks, SOTA-competitive</span>
+        <span><span class="mk lv3">~</span> solves all, below SOTA</span>
+        <span><span class="mk lv2">◔</span> solves only some</span>
+        <span><span class="mk lv1">✗</span> fails on all</span>
+        <span style="color:var(--faint)">·&nbsp; per cell: left = with task-specific tuning, right = fixed hyperparameters</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══ ROLLOUTS ══════════════════════════════════════ -->
+<section id="rollouts" class="alt">
+  <div class="wrap read">
+    <div class="eyebrow">Rollouts</div>
+    <h2 class="h">Behavior at deployment</h2>
+    <p class="lead">Rollouts from the clipped BC initialization. OGPO+ completes high-precision insertion reliably, while the partial-finetuning baselines fail in characteristic ways.</p>
+
+    <div class="tabs" id="vid-tabs">
+      <div class="tabbar">
+        <button class="active" data-t="vid-square">Square insertion</button>
+        <button data-t="vid-toolhang">Tool Hang</button>
+      </div>
+      <div class="panel active" id="vid-square">
+        <div class="vgrid two">
+          <div class="vcard"><video muted loop playsinline preload="metadata" controls><source src="assets/videos/ogpo_square.mp4" type="video/mp4"></video><div class="vc"><b>OGPO+ (ours)</b> — reliable insertion on Square.</div></div>
+          <div class="vcard"><video muted loop playsinline preload="metadata" controls><source src="assets/videos/dsrl_square.mp4" type="video/mp4"></video><div class="vc"><b>DSRL</b> — steering alone struggles on high-precision insertion.</div></div>
+        </div>
+      </div>
+      <div class="panel" id="vid-toolhang">
+        <div class="vgrid three">
+          <div class="vcard"><video muted loop playsinline preload="metadata" controls><source src="assets/videos/ogpo_toolhang.mp4" type="video/mp4"></video><div class="vc"><b>OGPO+ (ours)</b> — completes the full multi-step Tool Hang.</div></div>
+          <div class="vcard"><video muted loop playsinline preload="metadata" controls><source src="assets/videos/qc_toolhang.mp4" type="video/mp4"></video><div class="vc"><b>QC</b> — supervised extraction plateaus at partial success.</div></div>
+          <div class="vcard"><video muted loop playsinline preload="metadata" controls><source src="assets/videos/dsrl_toolhang.mp4" type="video/mp4"></video><div class="vc"><b>DSRL</b> — initial-noise steering cannot reshape later steps.</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══ ANALYSIS ══════════════════════════════════════ -->
+<section id="why">
+  <div class="wrap read">
+    <div class="eyebrow"><span class="step">7</span> Analysis</div>
+    <h2 class="h">How OGPO explores</h2>
+    <p class="lead">
+      A behavior-cloning policy is mode-seeking: irrespective of reward, it collapses action variance into the narrow cone of demonstrated trajectories. OGPO uses the critic to drive the opposite behavior &mdash; an expansion of the action manifold toward high-value regions beyond the support of the demonstrations.
+    </p>
+    <p>
+      The mechanism is visible in the action distributions over the course of training. All methods overlap with the BC mode early on, then diverge; OGPO's divergence is shaped by the critic. It reduces variance in the directions orthogonal to $\nabla_a Q$ while spreading along it, so the annealed importance ratio conditions the entire chain toward, rather than against, the value gradient.
+    </p>
+
+    <figure class="f"><img src="assets/figures/manifold_hero.png" alt="A BC flow policy collapses to a narrow cone of demonstrated actions, while OGPO widens the generative funnel toward the high-value regions of the critic." loading="lazy">
+      <figcaption><b>Mode-seeking against manifold expansion.</b> The BC flow policy (top) collapses its denoising process to a narrow cone around demonstrated actions. OGPO (bottom) reshapes every denoising step to spread probability mass toward the high-value regions of the critic $Q^*$, recovering valid solutions the demonstrations never contained (Push-T, right).</figcaption>
+    </figure>
+
+    <h3 class="sub">What the ablations show</h3>
+    <div class="finds">
+      <div class="find"><span class="n">1</span><b>Zeroth-order over backpropagation.</b> BPTT through the denoising steps often fails catastrophically; PPO's zeroth-order updates remain stable.</div>
+      <div class="find"><span class="n">2</span><b>Best-of-N needs the success buffer.</b> On its own, Best-of-N adds oscillation without improving final performance.</div>
+      <div class="find"><span class="n">3</span><b>Negative gradients are task-dependent.</b> Removing the negative-advantage contribution helps on some tasks and harms exploration on others.</div>
+      <div class="find"><span class="n">4</span><b>No GRPO variance normalization.</b> Adding it markedly degrades performance in this regime.</div>
+      <div class="find"><span class="n">5</span><b>Mean targets over pessimism.</b> Pessimistic initial Q-learning over-conservatizes; mean-of-ensemble targets perform best.</div>
+      <div class="find"><span class="n">6</span><b>Flow and diffusion alike.</b> The insight transfers: OGPO performs comparably across flow- and diffusion-based GCPs.</div>
+    </div>
+
+    <h3 class="sub">PPO against AWR and FPO for extraction</h3>
+    <p>
+      OGPO is modular: with the off-policy critic fixed, the extraction objective can be replaced. Comparing PPO against advantage-weighted regression (AWR, with its asymmetric and positive-only variants) and Flow Policy Optimization (FPO), PPO-style extraction is the most performant across tasks.
+    </p>
+    <figure class="f"><img src="assets/figures/extraction_ablations.png" alt="Policy-extraction comparison: PPO against AWR variants and FPO." loading="lazy">
+      <figcaption><b>Policy extraction compared.</b> Across extraction objectives &mdash; PPO, the AWR family, and FPO &mdash; PPO-style extraction is consistently strongest.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ══ LIMITATIONS ═══════════════════════════════════ -->
+<section id="limits" class="alt">
+  <div class="wrap read">
+    <div class="eyebrow">Limitations</div>
+    <h2 class="h">Where OGPO is not the right tool</h2>
+    <p class="lead">We state the boundaries of the method plainly.</p>
+    <div class="callout neutral"><span class="k">Full finetuning can be unnecessary</span> When the replay buffer already holds abundant expert-quality data, lighter methods such as residual learning can match OGPO at lower compute.</div>
+    <div class="callout neutral"><span class="k">PPO can over-exploit the critic</span> Aggressive extraction can over-fit an imperfect critic, causing training collapse or a tension between success rate and completion speed. The success buffer, and conservative advantages at the offline-to-online transition, are the remedies.</div>
+    <div class="callout neutral"><span class="k">Small residual oscillations</span> The success–speed tension produces small oscillations that can keep OGPO from reaching exactly 100% success on some tasks.</div>
+    <div class="callout neutral"><span class="k">Dense and dexterous, with expert data</span> On dense-reward Adroit tasks with proficient demonstrations, residual learning is the more natural fit; OGPO is competitive but not dominant.</div>
+  </div>
+</section>
+
+<!-- ══ BIBTEX ════════════════════════════════════════ -->
+<section id="bibtex">
+  <div class="wrap read">
+    <div class="eyebrow">Cite</div>
+    <h2 class="h">BibTeX</h2>
+    <div class="bib">
+      <button id="copybib"><i class="fas fa-copy"></i> Copy</button>
+<pre id="bibtext">@article{patil2026ogpo,
+  title   = {{OGPO}: Sample Efficient Full-Finetuning of Generative Control Policies},
+  author  = {Patil, Sarvesh and Nakamoto, Mitsuhiko and Agarwal, Manan and
+             Saxena, Shashwat and Zhang, Jesse and Anantharaman, Giri and
+             Winston, Cleah and Pan, Chaoyi and Chen, Douglas and Huang, Nai-Chieh and
+             Temel, Zeynep and Kroemer, Oliver and Levine, Sergey and Gupta, Abhishek and
+             Dai, Hongkai and Shah, Paarth and Simchowitz, Max},
+  journal = {arXiv preprint arXiv:2605.03065},
+  year    = {2026}
+}</pre>
+    </div>
+    <p style="font-size:.85rem;color:var(--muted);margin-top:.75rem">OGPO = Off-Policy Generative Policy Optimization.</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p><strong>OGPO</strong> — Off-Policy Generative Policy Optimization.</p>
+    <p>Page design adapted from the <a href="https://pd-perry.github.io/TQL/">TQL</a> and <a href="https://robometer.github.io/">Robometer</a> project pages.</p>
+  </div>
+</footer>
+
+<script>
+(function () {
+  'use strict';
+
+  function bindTabs(rootId) {
+    var root = document.getElementById(rootId);
+    if (!root) return;
+    var btns = root.querySelectorAll('.tabbar button');
+    btns.forEach(function (b) {
+      b.addEventListener('click', function () {
+        btns.forEach(function (x) { x.classList.remove('active'); });
+        b.classList.add('active');
+        root.querySelectorAll('.panel').forEach(function (p) {
+          p.classList.toggle('active', p.id === b.dataset.t);
+        });
+      });
+    });
+  }
+  ['env-tabs', 'vid-tabs'].forEach(bindTabs);
+
+  var pbar = document.getElementById('pbar');
+  function bar() {
+    var h = document.documentElement;
+    var s = h.scrollTop / Math.max(1, h.scrollHeight - h.clientHeight);
+    pbar.style.width = (s * 100).toFixed(1) + '%';
+  }
+  window.addEventListener('scroll', bar, { passive: true }); bar();
+
+  var links = Array.prototype.slice.call(document.querySelectorAll('nav.top .links a[href^="#"]'));
+  var map = links.map(function (l) { return { l: l, el: document.getElementById(l.getAttribute('href').slice(1)) }; }).filter(function (x) { return x.el; });
+  function spy() {
+    var y = window.scrollY + 90, act = null;
+    for (var i = map.length - 1; i >= 0; i--) { if (map[i].el.offsetTop <= y) { act = map[i]; break; } }
+    links.forEach(function (l) { l.classList.remove('active'); });
+    if (act) act.l.classList.add('active');
+  }
+  window.addEventListener('scroll', spy, { passive: true }); spy();
+
+  var cb = document.getElementById('copybib');
+  if (cb) cb.addEventListener('click', function () {
+    navigator.clipboard.writeText(document.getElementById('bibtext').textContent).then(function () {
+      cb.innerHTML = '<i class="fas fa-check"></i> Copied'; setTimeout(function () { cb.innerHTML = '<i class="fas fa-copy"></i> Copy'; }, 1500);
+    });
+  });
+
+  if ('IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function (es) {
+      es.forEach(function (e) { var v = e.target; if (e.isIntersecting) { var p = v.play(); if (p && p.catch) p.catch(function () {}); } else v.pause(); });
+    }, { threshold: 0.25 });
+    document.querySelectorAll('.vcard video').forEach(function (v) { io.observe(v); });
+  }
+})();
+</script>
+</body>
+</html>
