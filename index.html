@@ -173,12 +173,15 @@ window.MathJax = {
   .pcard .lim { margin-top:.65rem; font-size:.85rem; color:var(--ogpo); font-weight:500; }
 
   /* equations */
-  .eqn { background:#fff; border:1px solid var(--divider); border-radius:9px; padding:.6rem 1rem; margin:1rem 0; overflow-x:auto; }
+  .eqn { background:#fff; border:1px solid var(--divider); border-radius:9px; padding:.6rem 1rem; margin:1rem 0; overflow-x:auto; max-width:100%; }
+  /* keep wide display equations from forcing horizontal page overflow (mobile zoom-out) */
+  mjx-container[display="true"] { max-width:100%; overflow-x:auto; overflow-y:hidden; }
   .eqn .tag { display:block; font-family:'Space Grotesk'; font-size:.72rem; letter-spacing:.05em; text-transform:uppercase; color:var(--accent-dark); margin-bottom:.05rem; }
 
   /* numbered method steps */
   .steps { margin: 1.2rem 0; }
   .stepi { display:flex; gap:1rem; padding:0.95rem 0; border-top:1px solid var(--divider); }
+  .stepi .body { min-width:0; }   /* allow flex child to shrink so its .eqn scrolls instead of overflowing the page */
   .stepi:first-child { border-top:none; }
   .stepi .num { flex:0 0 auto; display:grid; place-items:center; width:1.85rem; height:1.85rem; border-radius:50%; background:var(--accent-soft); color:var(--accent-dark); font-family:'Space Grotesk'; font-weight:700; font-size:.92rem; }
   .stepi .body h4 { margin:.1rem 0 .3rem; font-size:1.03rem; }
@@ -316,6 +319,60 @@ window.MathJax = {
     <p>
       OGPO achieves state-of-the-art performance on manipulation tasks spanning multi-task settings, high-precision insertion, and dexterous control. To our knowledge, it is also the only method that can finetune poorly-initialized behavior-cloning policies to near-full task success with no expert data in the online replay buffer, and does so with little task-specific hyperparameter tuning. Through extensive empirical study, we show that OGPO substantially outperforms alternatives based on policy steering and residual corrections, and we identify the mechanisms behind its performance.
     </p>
+
+    <div class="anim-host" data-anim="sever-parallel" style="margin-top:1.4rem">
+      <div class="anim-widget anim-frame">
+        <div class="anim-stage">
+          <svg viewBox="0 0 1120 250" role="img" aria-label="An environment MDP s0 s1 s2 with rewards, where each step is produced by a denoising MDP. OGPO severs the s1 to s2 transition and rolls many denoising trajectories from s1 in parallel, all scored by the critic Q.">
+            <defs>
+              <marker id="sp-g" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#9aa0aa"/></marker>
+              <marker id="sp-b" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#7c93b8"/></marker>
+            </defs>
+            <text x="20" y="24" font-size="12" font-weight="700" letter-spacing=".07em" fill="#C2570C">ENVIRONMENT MDP</text>
+            <line x1="116" y1="62" x2="378" y2="62" stroke="#c8ccd2" stroke-width="3" marker-end="url(#sp-g)"/>
+            <g id="sp-seg12">
+              <line x1="430" y1="62" x2="690" y2="62" stroke="#c8ccd2" stroke-width="3" marker-end="url(#sp-g)"/>
+              <line x1="738" y1="62" x2="788" y2="62" stroke="#c8ccd2" stroke-width="3" marker-end="url(#sp-g)"/>
+            </g>
+            <g><circle cx="247" cy="40" r="13" fill="#e9f4ec" stroke="#15803d"/><text x="247" y="45" text-anchor="middle" font-size="12" font-weight="700" fill="#15803d">r₀</text></g>
+            <g id="sp-rew1"><circle cx="560" cy="40" r="13" fill="#e9f4ec" stroke="#15803d"/><text x="560" y="45" text-anchor="middle" font-size="12" font-weight="700" fill="#15803d">r₁</text></g>
+            <g id="sp-rew2"><circle cx="800" cy="40" r="13" fill="#e9f4ec" stroke="#15803d"/><text x="800" y="45" text-anchor="middle" font-size="12" font-weight="700" fill="#15803d">r₂</text></g>
+            <g><circle cx="92" cy="62" r="23" fill="#dbe6fb" stroke="#2563eb" stroke-width="2.5"/><text x="92" y="68" text-anchor="middle" font-size="15" font-weight="700" fill="#1e3a8a">s₀</text></g>
+            <g><circle cx="404" cy="62" r="23" fill="#dbe6fb" stroke="#2563eb" stroke-width="2.5"/><text x="404" y="68" text-anchor="middle" font-size="15" font-weight="700" fill="#1e3a8a">s₁</text></g>
+            <g id="sp-s2node"><circle cx="714" cy="62" r="23" fill="#eef2f8" stroke="#aab4c4" stroke-width="2.5"/><text x="714" y="68" text-anchor="middle" font-size="15" font-weight="700" fill="#475569">s₂</text></g>
+            <text x="20" y="150" font-size="12" font-weight="700" letter-spacing=".07em" fill="#2563eb">DENOISING MDP</text>
+            <text x="20" y="166" font-size="10.5" fill="#9a9aa2">each env step =</text>
+            <text x="20" y="180" font-size="10.5" fill="#9a9aa2">one denoising trajectory</text>
+            <g>
+              <line x1="180" y1="150" x2="210" y2="150" stroke="#bcd0f0" stroke-width="2.5" marker-end="url(#sp-b)"/>
+              <text x="240" y="155" text-anchor="middle" font-size="14" fill="#aab2bd">⋯</text>
+              <line x1="262" y1="150" x2="292" y2="150" stroke="#bcd0f0" stroke-width="2.5" marker-end="url(#sp-b)"/>
+              <g><circle cx="166" cy="150" r="15" fill="#eaf1fd" stroke="#2563eb" stroke-width="2"/><text x="166" y="155" text-anchor="middle" font-size="10" font-weight="700" fill="#1e3a8a">a₀ᴷ</text></g>
+              <g><circle cx="308" cy="150" r="16" fill="#dff0e4" stroke="#15803d" stroke-width="2.5"/><text x="308" y="155" text-anchor="middle" font-size="10" font-weight="800" fill="#15803d">a₀⁰</text></g>
+              <path d="M308,134 C308,104 360,96 392,80" fill="none" stroke="#bcd0f0" stroke-width="2" stroke-dasharray="4 4" marker-end="url(#sp-b)"/>
+            </g>
+            <g id="sp-chain1">
+              <line x1="486" y1="150" x2="516" y2="150" stroke="#bcd0f0" stroke-width="2.5" marker-end="url(#sp-b)"/>
+              <text x="546" y="155" text-anchor="middle" font-size="14" fill="#aab2bd">⋯</text>
+              <line x1="568" y1="150" x2="598" y2="150" stroke="#bcd0f0" stroke-width="2.5" marker-end="url(#sp-b)"/>
+              <g><circle cx="472" cy="150" r="15" fill="#eaf1fd" stroke="#2563eb" stroke-width="2"/><text x="472" y="155" text-anchor="middle" font-size="10" font-weight="700" fill="#1e3a8a">a₁ᴷ</text></g>
+              <g><circle cx="614" cy="150" r="16" fill="#dff0e4" stroke="#15803d" stroke-width="2.5"/><text x="614" y="155" text-anchor="middle" font-size="10" font-weight="800" fill="#15803d">a₁⁰</text></g>
+              <path d="M614,134 C614,104 666,96 698,80" fill="none" stroke="#bcd0f0" stroke-width="2" stroke-dasharray="4 4" marker-end="url(#sp-b)"/>
+            </g>
+            <g id="sp-cut" opacity="0"><text x="548" y="78" font-size="22">✂️</text></g>
+            <text id="sp-parLbl" x="1100" y="24" text-anchor="end" font-size="12" font-weight="700" letter-spacing=".06em" fill="#c0392b" opacity="0">OGPO · parallel denoising from s₁, scored by Q</text>
+            <g id="sp-fan"></g>
+            <g id="sp-qnode" opacity="0">
+              <circle cx="690" cy="214" r="22" fill="#e9f4ec" stroke="#15803d" stroke-width="2.5"/>
+              <text x="690" y="219" text-anchor="middle" font-size="15" font-weight="800" fill="#15803d">Q</text>
+              <text x="690" y="246" text-anchor="middle" font-size="10" fill="#15803d">scores every track</text>
+            </g>
+          </svg>
+        </div>
+        <div class="anim-controls"><button class="primary" data-run>⏸ Pause</button></div>
+        <p class="anim-caption" data-cap></p>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -464,14 +521,14 @@ window.MathJax = {
     <div class="algo">
       <span class="h">Algorithm — OGPO (abbreviated)</span>
 <span class="kw">for</span> each environment step <span class="kw">until</span> done: <br>
-  <p> &emsp;execute  a_t ~ <span class="v">π̄</span>(·|s_t); <br>
+  <p> &emsp;execute  a_t ~ <span class="v">π<sub>θ</sub></span>(·|s_t); <br>
     &emsp;push (s_t, a_t, r_t, s_{t+1}, done) → buffer 𝓑 <br>
    &emsp;<span class="c"># critic update — off-policy, sample-efficient</span> <br>
    &emsp;update critics φ₁…φ_M with the TD error over batches from 𝓑 <br>
   &emsp;<span class="c"># actor update — on-policy PPO, in the GCP's imagination</span> <br>
   <span class="kw">for</span> i = 1…N_batch: <br>
-   &emsp;&emsp;sample state s⁽ⁱ⁾ ~ 𝓑;  roll N_group denoising trajectories a⁽ⁱ,ʲ⁾ ~ <span class="v">π̄</span>(·|s⁽ⁱ⁾) <br>
-    &emsp;&emsp;baseline  V̂⁽ⁱ⁾ ← mean_j Q_targ(s⁽ⁱ⁾, a₀⁽ⁱ,ʲ⁾) <br>
+   &emsp;&emsp;sample state s⁽ⁱ⁾ ~ 𝓑;  roll N_group denoising trajectories a⁽ⁱ,ʲ⁾ ~ <span class="v">π<sub>θ</sub></span>(·|s⁽ⁱ⁾) <br>
+    &emsp;&emsp;baseline  V̂⁽ⁱ⁾ ← mean_j Q<sub>φ</sub>(s⁽ⁱ⁾, a₀⁽ⁱ,ʲ⁾) <br>
    &emsp;&emsp;update actor with the aggregated PPO loss   <span class="c"># no BPTT, no ∇ₐQ</span> <br>
   &emsp;&emsp;EMA targets:  θ̄ ← (1−τ)θ̄ + τθ;   φ̄ ← (1−τ)φ̄ + τφ
   </p>
@@ -542,6 +599,7 @@ window.MathJax = {
             <g id="t2" style="display:none"></g>
           </svg>
         </div>
+        <div class="anim-controls"><button class="primary" data-run>⏸ Pause</button></div>
         <p class="anim-caption" data-cap></p>
       </div>
     </div>
@@ -703,20 +761,20 @@ window.MathJax = {
 
     <div class="tabs" id="vid-tabs">
       <div class="tabbar">
-        <button class="active" data-t="vid-square">Square insertion</button>
-        <button data-t="vid-toolhang">Tool Hang</button>
+        <button data-t="vid-square">Square insertion</button>
+        <button class="active" data-t="vid-toolhang">Tool Hang</button>
       </div>
-      <div class="panel active" id="vid-square">
+      <div class="panel" id="vid-square">
         <div class="vgrid two">
-          <div class="vcard"><video muted loop playsinline preload="metadata" controls><source src="assets/videos/ogpo_square.mp4" type="video/mp4"></video><div class="vc"><b>OGPO+ (ours)</b> — reliable insertion on Square.</div></div>
-          <div class="vcard"><video muted loop playsinline preload="metadata" controls><source src="assets/videos/dsrl_square.mp4" type="video/mp4"></video><div class="vc"><b>DSRL</b> — steering alone struggles on high-precision insertion.</div></div>
+          <div class="vcard"><video muted loop playsinline preload="metadata" controls><source src="assets/videos/ogpo_square.mp4" type="video/mp4"></video><div class="vc"><b>OGPO+ (ours)</b> — efficient rollouts at high precision.</div></div>
+          <div class="vcard"><video muted loop playsinline preload="metadata" controls><source src="assets/videos/dsrl_square.mp4" type="video/mp4"></video><div class="vc"><b>DSRL</b> — inefficient rollouts.</div></div>
         </div>
       </div>
-      <div class="panel" id="vid-toolhang">
+      <div class="panel active" id="vid-toolhang">
         <div class="vgrid three">
-          <div class="vcard"><video muted loop playsinline preload="metadata" controls><source src="assets/videos/ogpo_toolhang.mp4" type="video/mp4"></video><div class="vc"><b>OGPO+ (ours)</b> — completes the full multi-step Tool Hang.</div></div>
+          <div class="vcard"><video muted loop playsinline preload="metadata" controls><source src="assets/videos/ogpo_toolhang.mp4" type="video/mp4"></video><div class="vc"><b>OGPO+ (ours)</b> — efficient rollouts at high precision.</div></div>
           <div class="vcard"><video muted loop playsinline preload="metadata" controls><source src="assets/videos/qc_toolhang.mp4" type="video/mp4"></video><div class="vc"><b>QC</b> — supervised extraction plateaus at partial success.</div></div>
-          <div class="vcard"><video muted loop playsinline preload="metadata" controls><source src="assets/videos/dsrl_toolhang.mp4" type="video/mp4"></video><div class="vc"><b>DSRL</b> — initial-noise steering cannot reshape later steps.</div></div>
+          <div class="vcard"><video muted loop playsinline preload="metadata" controls><source src="assets/videos/dsrl_toolhang.mp4" type="video/mp4"></video><div class="vc"><b>DSRL</b> — inefficient rollouts.</div></div>
         </div>
       </div>
     </div>

@@ -405,15 +405,77 @@
     var tab = 'ca', f = 0, raf = null;
     function render(f) { if (tab === 'ca') renderCA(f); else renderSB(f); }
     function loop() { f++; render(f); raf = requestAnimationFrame(loop); }
-    function run() { if (!raf) raf = requestAnimationFrame(loop); }
-    function stop() { if (raf) { cancelAnimationFrame(raf); raf = null; } }
+    var userPaused = false, runBtn = host.querySelector('[data-run]');
+    function setBtn() { if (runBtn) runBtn.textContent = raf ? '⏸ Pause' : '▶ Resume'; }
+    function run() { if (!raf && !userPaused) raf = requestAnimationFrame(loop); setBtn(); }
+    function stop() { if (raf) { cancelAnimationFrame(raf); raf = null; } setBtn(); }
+    if (runBtn) runBtn.addEventListener('click', function () { userPaused = !userPaused; if (userPaused) stop(); else run(); });
     var tabs = host.querySelectorAll('.anim-tabbar button');
     tabs.forEach(function (b) { b.addEventListener('click', function () { tabs.forEach(function (x) { x.classList.remove('active'); x.removeAttribute('aria-selected'); }); b.classList.add('active'); b.setAttribute('aria-selected', 'true'); tab = b.dataset.t; q('#t1').style.display = tab === 'ca' ? '' : 'none'; q('#t2').style.display = tab === 'sb' ? '' : 'none'; f = 0; render(0); }); });
     render(0);
     if ('IntersectionObserver' in window) { var io = new IntersectionObserver(function (es) { es.forEach(function (e) { if (e.isIntersecting) run(); else stop(); }); }, { threshold: 0.3 }); io.observe(svg); }
   }
 
-  var INITS = { 'method-comparison': initMethodComparison, 'policy-extraction': initPolicyExtraction, 'stabilizers': initStabilizers };
+  // ============================================================================================
+  // A0 — intro banner: DPPO (Ren et al.) embeds the denoising chain into the environment horizon;
+  // OGPO severs that coupling, uses the critic Q as a terminal reward, and updates the policy from
+  // many denoising trajectories rolled in parallel. Compact, full-width, low height.
+  // ============================================================================================
+  function initSeverParallel(host) {
+    var svg = host.querySelector('svg'); if (!svg) return;
+    var SVGNS = 'http://www.w3.org/2000/svg', q = function (s) { return svg.querySelector(s); }, capEl = host.querySelector('[data-cap]');
+    host.setAttribute('data-anim-ready', 'true');
+    function el(t, a) { var e = document.createElementNS(SVGNS, t); for (var k in a) e.setAttribute(k, a[k]); return e; }
+    function lerp(a, b, t) { t = Math.max(0, Math.min(1, t)); return a + (b - a) * t; }
+    function span(f, a, b) { return Math.max(0, Math.min(1, (f - a) / (b - a))); }
+
+    var S1 = [404, 62], QN = [690, 214], EX = 908, gFan = q('#sp-fan');
+    var TR = [{ y: 120, q: 0.92 }, { y: 150, q: 0.5 }, { y: 178, q: 0.96 }, { y: 206, q: 0.34 }];
+    var MEANQ = TR.reduce(function (s, t) { return s + t.q; }, 0) / TR.length, paths = [], lens = [], dots = [], acts = [], fbs = [];
+    TR.forEach(function (t) { var d = 'M' + (S1[0] + 20) + ',' + (S1[1] + 8) + ' C560,' + lerp(S1[1], t.y, 0.5) + ' 720,' + t.y + ' ' + (EX - 16) + ',' + t.y; var p = el('path', { d: d, fill: 'none', stroke: '#9bb8e8', 'stroke-width': 3, 'stroke-linecap': 'round' }); gFan.appendChild(p); paths.push(p); });
+    paths.forEach(function (p) { var L = p.getTotalLength(); lens.push(L); p.setAttribute('stroke-dasharray', L); p.setAttribute('stroke-dashoffset', L); var dd = []; [0.45, 0.7].forEach(function (fr) { var pt = p.getPointAtLength(L * fr); var c = el('circle', { cx: pt.x, cy: pt.y, r: 2.6, fill: '#2563eb', opacity: 0 }); gFan.appendChild(c); dd.push({ el: c, fr: fr }); }); dots.push(dd); });
+    TR.forEach(function (t) {
+      var fb = el('path', { d: 'M' + (QN[0] + 6) + ',' + (QN[1] - 14) + ' Q' + ((QN[0] + EX) / 2 + 30) + ',' + ((QN[1] + t.y) / 2 - 30) + ' ' + (EX - 2) + ',' + (t.y + 10), fill: 'none', stroke: '#86c79b', 'stroke-width': 1.6, 'stroke-dasharray': '4 4', opacity: 0 }); gFan.appendChild(fb); fbs.push(fb);
+      var a = el('circle', { cx: EX, cy: t.y, r: 12, fill: '#eef4ff', stroke: '#9bb8e8', 'stroke-width': 2.5, opacity: 0 }); gFan.appendChild(a); acts.push(a);
+    });
+
+    var CAP = '<b>The bi-level MDP.</b> An environment MDP s₀→s₁→s₂ collects rewards r₀,r₁,r₂; <b>each env step is itself a denoising MDP</b> that generates the action (a<sub>t</sub>ᴷ→a<sub>t</sub>⁰). <b>OGPO severs the s₁→s₂ transition</b> and instead rolls <b>many denoising trajectories from s₁ in parallel</b> — all scored by the off-policy critic Q.';
+    var LOOP = 560, f = 0, raf = null, userPaused = false;
+    function setOp(id, v) { q(id).setAttribute('opacity', v); }
+    function render(f) {
+      var cut = span(f, 170, 210);
+      setOp('#sp-seg12', 1 - cut); setOp('#sp-rew1', 1 - cut); setOp('#sp-rew2', 1 - cut); setOp('#sp-s2node', 1 - 0.7 * cut); setOp('#sp-chain1', 1 - cut);
+      setOp('#sp-cut', (f >= 160 && f < 235) ? (1 - span(f, 210, 235)) : 0);
+      var par = span(f, 225, 275);
+      setOp('#sp-parLbl', par); setOp('#sp-qnode', par);
+      var draw = span(f, 250, 400), score = span(f, 380, 470), recolor = f >= 370;
+      TR.forEach(function (t, i) {
+        var good = t.q >= MEANQ, dp = Math.max(0, Math.min(1, draw - i * 0.05));
+        paths[i].setAttribute('stroke-dashoffset', lens[i] * (1 - dp));
+        dots[i].forEach(function (d) { d.el.setAttribute('opacity', dp > d.fr ? 0.9 : 0); });
+        var col = '#9bb8e8', w = 3, op = 1;
+        if (recolor) col = good ? '#15803d' : '#c0392b';
+        if (score > 0) { w = good ? lerp(3, 6, score) : lerp(3, 1.3, score); op = good ? 1 : lerp(0.85, 0.32, score); col = good ? '#22c55e' : '#ef4444'; }
+        paths[i].setAttribute('stroke', recolor ? col : '#9bb8e8'); paths[i].setAttribute('stroke-width', w); paths[i].setAttribute('opacity', op);
+        var ap = span(f, 360, 390) * op; acts[i].setAttribute('opacity', ap);
+        acts[i].setAttribute('r', score > 0 && good ? lerp(12, 15, score) : 12);
+        acts[i].setAttribute('stroke', recolor ? (good ? '#15803d' : '#c0392b') : '#9bb8e8');
+        acts[i].setAttribute('fill', recolor ? (good ? '#e9f4ec' : '#fbeeee') : '#eef4ff');
+        fbs[i].setAttribute('opacity', score * 0.9);
+      });
+      capEl.innerHTML = CAP;
+    }
+    function loop() { f = (f + 1) % LOOP; render(f); raf = requestAnimationFrame(loop); }
+    var runBtn = host.querySelector('[data-run]');
+    function setBtn() { if (runBtn) runBtn.textContent = raf ? '⏸ Pause' : '▶ Resume'; }
+    function run() { if (!raf && !userPaused) raf = requestAnimationFrame(loop); setBtn(); }
+    function stop() { if (raf) { cancelAnimationFrame(raf); raf = null; } setBtn(); }
+    if (runBtn) runBtn.addEventListener('click', function () { userPaused = !userPaused; if (userPaused) stop(); else run(); });
+    render(0);
+    if ('IntersectionObserver' in window) { var io = new IntersectionObserver(function (es) { es.forEach(function (e) { if (e.isIntersecting) run(); else stop(); }); }, { threshold: 0.25 }); io.observe(svg); }
+  }
+
+  var INITS = { 'sever-parallel': initSeverParallel, 'method-comparison': initMethodComparison, 'policy-extraction': initPolicyExtraction, 'stabilizers': initStabilizers };
   function boot() {
     document.querySelectorAll('.anim-host[data-anim]').forEach(function (h) {
       if (REDUCE) return;
