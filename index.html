@@ -17,6 +17,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
+<link rel="stylesheet" href="assets/anim/anim.css">
 
 <!-- MathJax 3 — no custom macros (all notation written out inline for robustness) -->
 <script>
@@ -138,7 +139,7 @@ window.MathJax = {
   section.alt { background: var(--bg-alt); }
   .eyebrow { font-family:'Space Grotesk'; font-weight:600; font-size:.74rem; letter-spacing:.15em; text-transform:uppercase; color: var(--accent); display:flex; align-items:center; gap:.55rem; margin-bottom:.55rem; }
   .eyebrow .step { display:inline-grid; place-items:center; width:1.35rem; height:1.35rem; border-radius:50%; background:var(--accent-soft); color:var(--accent-dark); font-size:.72rem; font-weight:700; }
-  h2.h { font-size: clamp(1.5rem, 3vw, 1.95rem); font-weight: 700; letter-spacing: -0.02em; margin: 0 0 0.85rem; max-width: 24ch; }
+  h2.h { font-size: clamp(1.5rem, 3vw, 1.95rem); font-weight: 700; letter-spacing: -0.02em; margin: 0 0 0.85rem; text-wrap: balance; }
   h3.sub { font-size: 1.14rem; font-weight: 600; margin: 1.7rem 0 0.5rem; color: var(--ink); }
   .lead { font-size: 1.06rem; color: var(--ink-soft); }
 
@@ -356,12 +357,14 @@ window.MathJax = {
     </div>
 
 
-    <figure class="f">
-      <div class="fig-frame"><img src="assets/figures/method_landscape.png" alt="Comparison of off-policy RL algorithms for generative control policies: steering and residual learning, Best-of-N supervised finetuning and backprop-through-time, and OGPO." loading="lazy"></div>
-      <figcaption>
-        <b>The landscape of GCP finetuning.</b> <em>Left:</em> DSRL steers the initial noise; EXPO adds a residual to the final action. <em>Center:</em> QC distills Best-of-N actions ranked by the critic; backprop-through-time (BPTT) differentiates the critic through the whole denoising chain. <em>Right:</em> OGPO uses an ensemble of critics to form a relative advantage that conditions the action likelihoods across the entire chain.
-      </figcaption>
-    </figure>
+    <div class="anim-host" data-anim="method-comparison">
+      <figure class="f anim-fallback">
+        <div class="fig-frame"><img src="assets/figures/method_landscape.png" alt="Comparison of off-policy RL algorithms for generative control policies: steering and residual learning, Best-of-N supervised finetuning and backprop-through-time, and OGPO." loading="lazy"></div>
+      </figure>
+    </div>
+    <figcaption class="f" style="font-size:0.89rem;color:var(--muted);margin:0.65rem 0 0;line-height:1.55;">
+      <b style="color:var(--ink)">Why full-policy, not partial finetuning.</b> One value landscape with <b style="color:var(--ink)">two equally-optimal modes</b> joined by a high-value corridor, one weak BC start, one critic — only the <em>update</em> differs. Switch tabs: <em>DSRL</em> steers within the frozen policy's support and <em>EXPO</em> adds a bounded residual, so both reach at most the near mode; <em>QC</em> clones Best-of-N and collapses onto a single mode. <em>OGPO</em> updates the whole policy and holds a <b style="color:var(--ink)">thin band of variance spanning both</b> optima. The motion is OGPO's actual zeroth-order step — sample, score with $Q$, advantage-weight, up-weight likelihood — <b style="color:var(--ink)">never</b> a gradient through the critic.
+    </figcaption>
   </div>
 </section>
 
@@ -377,12 +380,33 @@ window.MathJax = {
       The two levels differ sharply in cost. A step in the environment moves a physical robot and is therefore expensive; a step in the denoising process is a single forward pass, and is therefore cheap and trivially parallelizable. OGPO is organized entirely around exploiting this asymmetry.
     </p>
 
-    <figure class="f">
-      <div class="fig-frame"><img src="assets/figures/bilevel_main.png" alt="The bi-level MDP: denoising trajectories nested inside environment transitions, with OGPO severing the MDP at the end of each denoising trajectory and using the critic Q as a terminal reward." loading="lazy"></div>
-      <figcaption>
-        <b>Severing the bi-level MDP.</b> Within each block the policy denoises an action ($a^K \to \cdots \to a^0$); between blocks, the environment transitions. OGPO cuts the MDP at the end of every denoising trajectory and supplies the off-policy critic $Q(s_0, a_0^0)$ as a terminal reward for the inner denoising MDP.
-      </figcaption>
-    </figure>
+    <div class="anim-host" data-anim="policy-extraction">
+      <figure class="f anim-fallback">
+        <div class="fig-frame"><img src="assets/figures/bilevel_main.png" alt="OGPO rolls many denoising trajectories from a single state, scores each action with the critic Q, and up-weights the high-advantage trajectories." loading="lazy"></div>
+      </figure>
+      <div class="anim-widget anim-frame">
+        <div class="anim-stage">
+          <svg viewBox="0 0 760 360" role="img" aria-label="From a single state, several denoising trajectories are sampled in parallel, each producing an action scored by the critic Q; high-scoring trajectories are up-weighted and low-scoring ones down-weighted.">
+            <circle cx="86" cy="180" r="36" fill="#dbe6fb" stroke="#2563eb" stroke-width="2.5"/>
+            <text x="86" y="187" text-anchor="middle" font-size="22" font-weight="700" fill="#1e3a8a">s</text>
+            <g id="trajs"></g>
+            <g id="acts"></g>
+            <g id="bars"></g>
+            <text id="qlbl" x="612" y="44" font-size="12" font-weight="700" fill="#6b6b73" opacity="0">critic Q →</text>
+            <line id="mean" x1="612" y1="48" x2="612" y2="320" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="5 5" opacity="0"/>
+            <text id="meanlbl" x="612" y="44" text-anchor="middle" font-size="11" fill="#94a3b8" opacity="0">mean</text>
+          </svg>
+        </div>
+        <div class="anim-controls">
+          <button class="primary" data-run>▶ Play</button>
+          <button data-reset>↺ Reset</button>
+        </div>
+        <p class="anim-caption" data-cap></p>
+      </div>
+    </div>
+    <figcaption class="f" style="font-size:0.89rem;color:var(--muted);margin:0.65rem 0 0;line-height:1.55;">
+      <b style="color:var(--ink)">Extracting the policy in the denoising MDP.</b> From a single state, OGPO rolls many denoising trajectories in parallel — all free, in the policy's own imagination. It scores each resulting action with the off-policy critic $Q$, forms an advantage against the group mean, and increases the likelihood of the high-advantage trajectories while decreasing the rest — never differentiating the critic.
+    </figcaption>
 
     <div class="thesis">
       <span class="k">The key idea</span>
@@ -470,6 +494,60 @@ window.MathJax = {
     <p class="lead">
       Aggressive policy extraction can overly exploit imperfectly learned critics. Moreover, under the sparse, &minus;1-per-step reward typical in robotic manipulation, maximizing return trades completion <em>rate</em> against completion <em>speed</em>, and OGPO may learn to finish quickly at the expense of reliability. We propose two modifications, OGPO+ and OGPO+CA, that address these challenges, ensuring greater training stability and sample efficiency.
     </p>
+
+    <div class="anim-host" data-anim="stabilizers">
+      <figure class="f anim-fallback">
+        <img src="assets/figures/conservative_adv.png" alt="OGPO with conservative advantages compared against Cal-QL and WSRL across the offline-to-online transition." loading="lazy">
+      </figure>
+      <div class="anim-widget anim-frame">
+        <div class="anim-tabbar" role="tablist" aria-label="OGPO+ stabilizer">
+          <button role="tab" data-t="ca" class="active" aria-selected="true">Conservative advantage</button>
+          <button role="tab" data-t="sb">Success buffer</button>
+        </div>
+        <div class="anim-stage">
+          <svg viewBox="0 0 720 392" role="img" aria-label="OGPO+ stabilizers: a critic-ensemble consensus gate that updates only on agreement, and a success buffer that raises an ELBo floor under the modes that succeed.">
+            <defs>
+              <marker id="a7-ah-g" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#15803d"/></marker>
+              <marker id="a7-ah-r" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#ef4444"/></marker>
+            </defs>
+            <g id="t1">
+              <text x="24" y="28" font-size="12" font-weight="700" letter-spacing=".1em" fill="#C2570C">ENSEMBLE OF CRITICS</text>
+              <g id="gauges"></g>
+              <g id="conv"></g>
+              <g id="cbadge">
+                <rect id="cbrect" x="283" y="150" width="154" height="30" rx="15" fill="#f4f3f1" stroke="#cbd5e1"/>
+                <text id="cbtext" x="360" y="170" text-anchor="middle" font-size="13" font-weight="700" fill="#6b6b73">checking…</text>
+              </g>
+              <g id="aperture" transform="translate(360,232)">
+                <circle id="passage" r="44" fill="#1f2937"/>
+                <g id="blades"></g>
+                <circle r="46" fill="none" stroke="#9aa0aa" stroke-width="3"/>
+              </g>
+              <path id="consarr" d="M360,280 L360,326" stroke="#15803d" stroke-width="4" marker-end="url(#a7-ah-g)" opacity="0"/>
+              <text id="consval" x="378" y="306" font-size="12" font-weight="800" fill="#15803d" opacity="0">Âᶜᵒⁿˢ</text>
+              <g id="policy">
+                <circle cx="360" cy="350" r="22" fill="#fdeede" stroke="#C2570C" stroke-width="2.5"/>
+                <text x="360" y="356" text-anchor="middle" font-size="15" font-weight="800" fill="#9A3F08">π</text>
+              </g>
+              <g id="dip" transform="translate(548,238)">
+                <rect x="0" y="0" width="150" height="92" rx="8" fill="#fcfaf7" stroke="#ece7df"/>
+                <text x="10" y="16" font-size="10" font-weight="700" fill="#6b6b73">offline → online</text>
+                <line x1="12" y1="78" x2="140" y2="78" stroke="#cbd5e1"/>
+                <line x1="64" y1="24" x2="64" y2="80" stroke="#e3b7b7" stroke-dasharray="3 3"/>
+                <path id="dipBad" d="M12,40 L60,40 C70,40 72,70 84,70 C96,70 100,46 140,42" fill="none" stroke="#ef4444" stroke-width="2.5"/>
+                <path id="dipGood" d="M12,40 L64,38 C96,33 120,30 140,26" fill="none" stroke="#15803d" stroke-width="2.5"/>
+                <text x="92" y="60" font-size="9" font-weight="700" fill="#ef4444" id="dipLblBad" opacity="0">dip</text>
+              </g>
+            </g>
+            <g id="t2" style="display:none"></g>
+          </svg>
+        </div>
+        <p class="anim-caption" data-cap></p>
+      </div>
+    </div>
+    <figcaption class="f" style="font-size:0.89rem;color:var(--muted);margin:0.65rem 0 0;line-height:1.55;">
+      <b style="color:var(--ink)">Two stabilizers for full-policy finetuning.</b> Switch tabs. <em>Conservative advantage</em> (OGPO+CA): the critic ensemble's advantage is gated to fire only when all members agree on its sign, taking the most conservative magnitude — so disagreement on out-of-support actions can't destabilize the policy, flattening the offline→online dip. <em>Success buffer</em> (OGPO+): an asymmetric cloning loss on successful episodes raises their likelihood (the ELBo on the generative model) — a floor under the modes PPO would otherwise abandon.
+    </figcaption>
 
     <h3 class="sub">OGPO+: Behavior cloning from a success buffer</h3>
     <p>
@@ -688,7 +766,7 @@ window.MathJax = {
       <div class="find"><span class="n">3</span><b>Benefits of negative gradients are task-dependent.</b> Removing the negative-advantage contribution helps on some tasks and harms exploration on others.</div>
       <div class="find"><span class="n">4</span><b>GRPO variance normalization hurts.</b> Adding it markedly degrades performance in this regime.</div>
       <div class="find"><span class="n">5</span><b>Mean targets outperform pessimism.</b> Pessimistic initial Q-learning over-conservatizes; mean-of-ensemble targets perform best.</div>
-      <div class="find"><span class="n">6</span><b>Flow and diffusion have comparable performance.</b> The insight transfers: OGPO performs comparably across flow- and diffusion-based GCPs. </div>
+      <div class="find"><span class="n">6</span><b>Flow and diffusion have comparable performance.</b> OGPO performs comparably across flow- and diffusion-based GCPs. </div>
     </div>
   </div>
 </section>
@@ -788,5 +866,6 @@ window.MathJax = {
   }
 })();
 </script>
+<script defer src="assets/anim/anim.js"></script>
 </body>
 </html>

@@ -11,3 +11,6 @@ _site/
 .vscode/
 .idea/
 *.swp
+
+# Dev animation playgrounds — kept locally for tuning, not deployed
+assets/anim/spike-*.html

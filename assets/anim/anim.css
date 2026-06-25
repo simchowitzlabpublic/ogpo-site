@@ -1,0 +1,61 @@
+/* OGPO website — animation styles. Reuses the page's :root tokens. */
+
+.anim-frame{
+  background:#fff; border:1px solid var(--divider); border-radius:12px; overflow:hidden;
+}
+.anim-frame .anim-tabbar{ display:flex; flex-wrap:wrap; gap:.4rem; padding:.7rem .7rem 0; }
+.anim-frame .anim-tabbar button{
+  font-family:'Space Grotesk',sans-serif; font-weight:500; font-size:.84rem; color:var(--ink-soft);
+  background:#fff; border:1px solid var(--divider); border-radius:7px; padding:.36rem .75rem;
+  cursor:pointer; transition:all .15s; display:flex; align-items:center; gap:.45rem;
+}
+.anim-frame .anim-tabbar button .dot{ width:.62rem; height:.62rem; border-radius:50%; display:inline-block; }
+.anim-frame .anim-tabbar button:hover{ border-color:var(--accent-border); color:var(--accent-dark); }
+.anim-frame .anim-tabbar button.active{ background:var(--ink); border-color:var(--ink); color:#fff; }
+
+.anim-frame .anim-stage{ padding:.7rem; }
+.anim-frame canvas{ width:100%; height:auto; display:block; border-radius:8px; background:#0b1020; }
+
+.anim-frame .anim-controls{ display:flex; align-items:center; gap:.55rem; flex-wrap:wrap; padding:.1rem .8rem .7rem; }
+.anim-frame .anim-controls button{
+  font-family:'Space Grotesk',sans-serif; font-weight:500; font-size:.82rem; border-radius:7px;
+  padding:.36rem .8rem; cursor:pointer; border:1px solid var(--divider); background:#fff; color:var(--ink-soft);
+}
+.anim-frame .anim-controls button.primary{ background:var(--accent); border-color:var(--accent); color:#fff; }
+.anim-frame .anim-controls button.primary:hover{ background:var(--accent-dark); }
+.anim-frame .anim-controls .spacer{ flex:1; }
+.anim-frame .anim-controls label{ font-size:.8rem; color:var(--muted); display:flex; align-items:center; gap:.35rem; cursor:pointer; user-select:none; }
+
+.anim-frame .anim-caption{ padding:.15rem .9rem .8rem; font-size:.92rem; line-height:1.55; }
+.anim-frame .anim-caption .k{ font-family:'Space Grotesk',sans-serif; font-weight:600; }
+.anim-frame .anim-caption .why{ color:var(--ogpo); font-weight:600; }
+.anim-frame .anim-caption .mech{ display:block; margin-top:.4rem; font-size:.83rem; color:var(--muted); }
+.anim-frame .anim-legend{ display:flex; gap:.4rem 1.1rem; flex-wrap:wrap; font-size:.76rem; color:var(--muted); padding:0 .9rem .9rem; }
+.anim-frame .anim-legend span{ display:flex; align-items:center; gap:.32rem; }
+.anim-frame .anim-legend i{ width:.72rem; height:.72rem; border-radius:2px; display:inline-block; }
+
+/* the static figure shown until JS upgrades it (and as the reduced-motion / no-JS fallback) */
+.anim-fallback{ margin:0; }
+/* widgets stay hidden until JS readies them (prevents double-display of inline SVG widgets on JS failure) */
+.anim-host .anim-widget{ display:none; }
+.anim-host[data-anim-ready="true"] .anim-widget{ display:block; }
+.anim-host[data-anim-ready="true"] .anim-fallback{ display:none; }
+
+/* A1 — bi-level sever SVG diagram */
+.anim-frame svg{ width:100%; height:auto; display:block; }
+.anim-frame .anim-stage svg text{ font-family:'Inter',system-ui,sans-serif; }
+
+/* A3 — exploration cloud: legend chips + training-progress slider */
+.anim-frame .anim-legend2{ display:flex; gap:.45rem; flex-wrap:wrap; padding:.6rem .8rem 0; }
+.anim-frame .anim-legend2 button{ font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:.78rem; border:1px solid var(--divider); background:#fff; border-radius:20px; padding:.25rem .7rem; cursor:pointer; display:flex; align-items:center; gap:.35rem; color:var(--ink-soft); }
+.anim-frame .anim-legend2 button .d{ width:.6rem; height:.6rem; border-radius:50%; }
+.anim-frame .anim-legend2 button.off{ opacity:.4; }
+.anim-frame .anim-prog{ display:flex; align-items:center; gap:.7rem; padding:.6rem .9rem .2rem; }
+.anim-frame .anim-prog input[type=range]{ flex:1; accent-color:var(--accent); }
+.anim-frame .anim-prog .stage{ font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:.82rem; color:var(--ink); min-width:5.6rem; }
+
+/* respect users who prefer no motion: never show the canvas widget, keep the figure */
+@media (prefers-reduced-motion: reduce){
+  .anim-host .anim-widget{ display:none !important; }
+  .anim-host .anim-fallback{ display:block !important; }
+}
