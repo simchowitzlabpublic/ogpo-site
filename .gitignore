@@ -1,0 +1,13 @@
+# OS cruft
+.DS_Store
+**/.DS_Store
+
+# Jekyll build artifacts (this is a plain static site; we don't build with Jekyll)
+_site/
+.jekyll-cache/
+.sass-cache/
+
+# Editor / tooling
+.vscode/
+.idea/
+*.swp

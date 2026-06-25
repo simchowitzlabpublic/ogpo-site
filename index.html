@@ -287,7 +287,7 @@ window.MathJax = {
 
     <div class="btns">
       <a class="btn dark" href="https://arxiv.org/abs/2605.03065" target="_blank" rel="noopener"><i class="ai ai-arxiv"></i> arXiv</a>
-      <a class="btn solid" href="assets/paper/ogpo_paper_arxiv_main.pdf" target="_blank" rel="noopener"><i class="fas fa-file-pdf"></i> Paper</a>
+      <a class="btn solid" href="assets/paper/OGPO.pdf" target="_blank" rel="noopener"><i class="fas fa-file-pdf"></i> Paper</a>
       <a class="btn ghost" href="https://github.com/simchowitzlabpublic/OGPO_public" target="_blank" rel="noopener"><i class="fab fa-github"></i> Code</a>
       <a class="btn ghost" href="#bibtex"><i class="fas fa-quote-right"></i> BibTeX</a>
     </div>
@@ -318,42 +318,43 @@ window.MathJax = {
   </div>
 </section>
 
-<!-- ══ THE PROBLEM ═══════════════════════════════════ -->
+<!-- ══PROBLEM Statement ═══════════════════════════════════ -->
 <section id="problem" class="alt">
   <div class="wrap read">
-    <div class="eyebrow"><span class="step">1</span> The problem</div>
-    <h2 class="h">Sample efficiency or expressivity, but not both</h2>
+    <div class="eyebrow"><span class="step">1</span>Motivating Question</div>
+    <h2 class="h">Can more expressive updates drive more sample-efficient online RL?</h2>
     <p class="lead">
-      A behavior-cloning policy rarely succeeds zero-shot across the range of conditions met at deployment, and the natural remedy &mdash; improving it autonomously with reinforcement learning &mdash; is bounded by the cost of real interaction. Existing methods for finetuning generative control policies sit at two ends of a single tradeoff, between data efficiency and the extent of policy improvement they permit.
+      A behavior-cloning policy rarely succeeds zero-shot across the range of conditions met at deployment, and the natural remedy, improving it autonomously with reinforcement learning, is bound by the cost of real interaction. Existing methods for finetuning generative control policies sit at two ends of a tradeoff between data efficiency and the extent of policy improvement they permit.
+    </p>
+
+    <p>
+      On one end, on-policy policy-gradient methods such as DPPO finetune the entire generative process and improve aggressively, but updates require fresh rollouts, and the effective horizon grows from the task horizon $T$ to $K \times T$ over the $K$ denoising steps. The result is expressive but sample-inefficient.
     </p>
     <p>
-      Methods built for sample efficiency pair off-policy critic learning with a <em>partial</em> update to the generative process. They learn quickly when the base policy already covers good actions, but cannot easily explore beyond it:
+      Off-policy critic learning with a <em>partial</em> update to the generative process. They are performant with well initialized policies, but cannot improve weak policies that require balanced expressivity and sharpening via online interactions. 
     </p>
 
     <div class="cards3">
       <div class="pcard">
         <span class="tag">Steering · DSRL</span>
         <h4>Steer the initial noise</h4>
-        <p>Freeze the GCP and learn a policy over the initial generation noise. Off-policy and cheap, but effective only where the base policy already covers good actions.</p>
-        <p class="lim">Later denoising steps remain fixed.</p>
+        <p>Freeze the GCP and learn a policy over the initial noise as actions to steer the generation process. Effective only where the base policy already covers good actions.</p>
+        <p class="lim">Cannot generate actions outside the support of the base GCP.</p>
       </div>
       <div class="pcard">
         <span class="tag">Residual · EXPO</span>
         <h4>Add a residual correction</h4>
-        <p>Freeze the GCP and learn a small additive correction to the final action. Well suited to a strong base policy needing only minor adjustment.</p>
-        <p class="lim">Cannot expand the support of the action distribution.</p>
+        <p>Freeze the GCP and learn a small additive correction to the final action. Well suited to a strong base policy needing only minor adjustments.</p>
+        <p class="lim">Can expand the support of the action distribution in a limited manner.</p>
       </div>
       <div class="pcard">
         <span class="tag">Extraction · QC</span>
         <h4>Imitate the best action</h4>
-        <p>Train an off-policy critic, then finetune the GCP by supervised cloning toward Best-of-N actions ranked by the critic.</p>
-        <p class="lim">Supervised cloning cannot grow new behavior; it plateaus and is tuning-sensitive.</p>
+        <p>Train an off-policy critic, then finetune the GCP by SFT on Best-of-N actions ranked by the critic.</p>
+        <p class="lim">SFT cannot learn new behavior. It plateaus and is hyperparameter-sensitive.</p>
       </div>
     </div>
 
-    <p>
-      At the other end, on-policy policy-gradient methods such as DPPO finetune the entire generative process and improve aggressively, but every update consumes fresh interaction, and the effective horizon grows from the task horizon $T$ to $K \times T$ over the $K$ denoising steps. The result is expressive but sample-hungry. OGPO is designed to occupy neither extreme.
-    </p>
 
     <figure class="f">
       <div class="fig-frame"><img src="assets/figures/method_landscape.png" alt="Comparison of off-policy RL algorithms for generative control policies: steering and residual learning, Best-of-N supervised finetuning and backprop-through-time, and OGPO." loading="lazy"></div>
@@ -364,11 +365,11 @@ window.MathJax = {
   </div>
 </section>
 
-<!-- ══ THE INSIGHT ═══════════════════════════════════ -->
+<!-- ══ Key INSIGHT ═══════════════════════════════════ -->
 <section id="insight">
   <div class="wrap read">
-    <div class="eyebrow"><span class="step">2</span> The insight</div>
-    <h2 class="h">A sharp asymmetry in the cost of samples</h2>
+    <div class="eyebrow"><span class="step">2</span> Key Insight</div>
+    <h2 class="h">Denoising samples are cheap; environment interactions are costly </h2>
     <p class="lead">
       OGPO builds on the bi-level view of GCP optimization introduced by Ren et al. (2024). Producing a single action requires running a denoising trajectory $a_{t,K} \to a_{t,K-1} \to \cdots \to a_{t,0}$, which unfolds an inner <em>denoising</em> MDP over generation steps, nested inside the outer <em>environment</em> MDP over executed actions.
     </p>
@@ -397,7 +398,7 @@ window.MathJax = {
 <!-- ══ THE METHOD ════════════════════════════════════ -->
 <section id="method" class="alt">
   <div class="wrap read">
-    <div class="eyebrow"><span class="step">3</span> The method</div>
+    <div class="eyebrow"><span class="step">3</span> Method</div>
     <h2 class="h">On-policy PPO for off-policy policy extraction</h2>
     <p class="lead">
       OGPO treats each denoising trajectory as a short sequence to be optimized with PPO, in which the only reward is supplied at the end &mdash; the critic's value of the final action. For a state $s_t$ and a sampled trajectory $a_{t,K:0}$, the objective is the standard clipped surrogate, applied to the denoising trajectory alone:
@@ -432,28 +433,30 @@ window.MathJax = {
       </div></div>
       <div class="stepi"><div class="num">4</div><div class="body">
         <h4>Debias the noise for flow policies</h4>
-        <p>Flow ODEs have singular per-step likelihoods, leaving the PPO ratio ill-defined. OGPO injects Gaussian noise at each flow step to make the likelihoods non-singular, and applies a stochastic-interpolant correction so that the per-step marginals continue to match standard ODE sampling.</p>
+        <p>Flow ODEs have singular per-step likelihoods, leaving the PPO ratio ill-defined. OGPO injects Gaussian noise at each flow step to make the likelihoods non-singular, and applies a stochastic-interpolant correction so that the per-step marginals continue to match standard ODE sampling (this is important!).</p>
       </div></div>
     </div>
 
     <div class="algo">
       <span class="h">Algorithm — OGPO (abbreviated)</span>
-<span class="kw">for</span> each environment step <span class="kw">until</span> done:
-  execute  a_t ~ <span class="v">π̄</span>(·|s_t);  push (s_t, a_t, r_t, s_{t+1}, done) → buffer 𝓑
-  <span class="c"># critic update — off-policy, sample-efficient</span>
-  update critics φ₁…φ_M with the TD error over batches from 𝓑
-  <span class="c"># actor update — on-policy PPO, in the GCP's imagination</span>
-  <span class="kw">for</span> i = 1…N_batch:
-     sample state s⁽ⁱ⁾ ~ 𝓑;  roll N_group denoising trajectories a⁽ⁱ,ʲ⁾ ~ <span class="v">π̄</span>(·|s⁽ⁱ⁾)
-     baseline  V̂⁽ⁱ⁾ ← mean_j Q_targ(s⁽ⁱ⁾, a₀⁽ⁱ,ʲ⁾)
-  update actor with the aggregated PPO loss   <span class="c"># no BPTT, no ∇ₐQ</span>
-  EMA targets:  θ̄ ← (1−τ)θ̄ + τθ;   φ̄ ← (1−τ)φ̄ + τφ
+<span class="kw">for</span> each environment step <span class="kw">until</span> done: <br>
+  <p> &emsp;execute  a_t ~ <span class="v">π̄</span>(·|s_t); <br>
+    &emsp;push (s_t, a_t, r_t, s_{t+1}, done) → buffer 𝓑 <br>
+   &emsp;<span class="c"># critic update — off-policy, sample-efficient</span> <br>
+   &emsp;update critics φ₁…φ_M with the TD error over batches from 𝓑 <br>
+  &emsp;<span class="c"># actor update — on-policy PPO, in the GCP's imagination</span> <br>
+  <span class="kw">for</span> i = 1…N_batch: <br>
+   &emsp;&emsp;sample state s⁽ⁱ⁾ ~ 𝓑;  roll N_group denoising trajectories a⁽ⁱ,ʲ⁾ ~ <span class="v">π̄</span>(·|s⁽ⁱ⁾) <br>
+    &emsp;&emsp;baseline  V̂⁽ⁱ⁾ ← mean_j Q_targ(s⁽ⁱ⁾, a₀⁽ⁱ,ʲ⁾) <br>
+   &emsp;&emsp;update actor with the aggregated PPO loss   <span class="c"># no BPTT, no ∇ₐQ</span> <br>
+  &emsp;&emsp;EMA targets:  θ̄ ← (1−τ)θ̄ + τθ;   φ̄ ← (1−τ)φ̄ + τφ
+  </p>
     </div>
 
     <figure class="f">
       <div class="fig-frame"><img src="assets/figures/pos_neg_gradients.png" alt="Best-of-N supervised cloning gives only positive gradients; BPTT gives exploding or vanishing gradients; advantage-based PPO gives smooth positive and negative gradients across the chain." loading="lazy"></div>
       <figcaption>
-        <b>Why an advantage, rather than imitation or backpropagation.</b> Best-of-N cloning provides only positive gradients toward a single action. BPTT pushes the critic gradient through the whole chain and tends to explode or vanish. OGPO's advantage gives a smooth signal of both signs, conditioning the denoising likelihoods toward better actions and away from worse ones.
+        <b>Why zero-order optimization, rather than imitation or backpropagation-through-time (BPTT) over the denoising steps.</b> Best-of-N cloning provides only positive gradients toward a single action. BPTT pushes the critic gradient through the whole chain and tends to explode or vanish. OGPO's zero-order optimization allows full optimization of a terminal advantage, without succumbing to the limits of BPTT.
       </figcaption>
     </figure>
   </div>
@@ -462,13 +465,13 @@ window.MathJax = {
 <!-- ══ OGPO+ ═════════════════════════════════════════ -->
 <section id="plus">
   <div class="wrap read">
-    <div class="eyebrow"><span class="step">4</span> OGPO+</div>
-    <h2 class="h">Grounding the policy in what already worked</h2>
+    <div class="eyebrow"><span class="step">4</span> OGPO+ and OGPO+CA</div>
+    <h2 class="h">Mitigating Critic Exploitation</h2>
     <p class="lead">
-      Aggressive policy extraction has a characteristic failure mode. Under the sparse, &minus;1-per-step reward typical of manipulation, maximizing return trades completion <em>rate</em> against completion <em>speed</em>, and OGPO may learn to finish quickly at the expense of reliability. OGPO+ adds two modifications that address this while recovering further sample efficiency.
+      Aggressive policy extraction can overly exploit imperfectly learned critics. Moreover, under the sparse, &minus;1-per-step reward typical in robotic manipulation, maximizing return trades completion <em>rate</em> against completion <em>speed</em>, and OGPO may learn to finish quickly at the expense of reliability. We propose two modifications, OGPO+ and OGPO+CA, that address these challenges, ensuring greater training stability and sample efficiency.
     </p>
 
-    <h3 class="sub">Behavior cloning from a success buffer</h3>
+    <h3 class="sub">OGPO+: Behavior cloning from a success buffer</h3>
     <p>
       We maintain a success buffer $\mathcal{D}_{\mathrm{succ}} \subseteq \mathcal{D}_{\mathrm{roll}}$ of transitions from episodes that succeeded, and add a small cloning loss on it. The term is asymmetric: it raises the likelihood of empirically successful actions without lowering that of failures, so it places a floor under the modes that the PPO objective is allowed to abandon.
     </p>
@@ -477,34 +480,9 @@ window.MathJax = {
       $$\mathcal L_{\mathrm{Total}}(\theta)=\mathcal L_{\mathrm{PPO}}(\theta)+\lambda_{\mathrm{BC}}\,\mathcal L_{\mathrm{BC}}(\theta),\qquad \mathcal L_{\mathrm{BC}}(\theta)=\mathbb{E}_{(s,a)\sim\mathcal{D}_{\mathrm{succ}}}\big[\,\ell_{\mathrm{BC}}\big(\bar\pi_\theta(\cdot\mid s),\,a\big)\big]$$
     </div>
 
-    <h3 class="sub">Best-of-N inference (optional)</h3>
-    <p>
-      At deployment we may sample $N$ candidate actions and execute the one the critic rates highest, exploiting the gap between verifying and generating a good action:
-    </p>
-    <div class="eqn">
-      <span class="tag">Best-of-N planning</span>
-      $$a_{\mathrm{BoN},t}=\operatorname*{arg\,max}\big\{\,Q_{\mathrm{targ}}(s_t, a_{t,0}^{(n)}) \;:\; a_{t,0}^{(1)},\dots,a_{t,0}^{(N)} \overset{\mathrm{iid}}{\sim} \pi_{\bar\theta}(\cdot\mid s_t)\big\}$$
-    </div>
-
-    <div class="callout green">
-      <span class="k">What actually carries the gain</span>
-      Because OGPO already extracts policies aggressively, Best-of-N adds only marginal performance. The success buffer is the decisive ingredient: it both damps over-exploitation of the critic and supports learning when successes are infrequent.
-    </div>
-
-    <figure class="f">
-      <img src="assets/figures/teaser_ogpo_vs_plus.png" alt="OGPO compared with OGPO+ on Square, Tool Hang, and Transport, showing faster and higher convergence for OGPO+." loading="lazy">
-      <figcaption><b>From OGPO to OGPO+.</b> Success rate against environment steps on three Robomimic tasks. Grounding in the success buffer makes OGPO+ converge faster, and to higher and steadier success, than the base method.</figcaption>
-    </figure>
-  </div>
-</section>
-
-<!-- ══ STABILITY ═════════════════════════════════════ -->
-<section id="robust" class="alt">
-  <div class="wrap read">
-    <div class="eyebrow"><span class="step">5</span> Stability</div>
-    <h2 class="h">Surviving the offline-to-online transition</h2>
-    <p class="lead">
-      Full-policy finetuning is expressive enough to over-exploit an imperfect critic, and this is most visible at the transition from offline pretraining to online RL. There, the critic ensemble has not yet reached agreement on actions outside the offline support, and that disagreement passes directly into the policy gradient &mdash; the familiar performance "dip."
+    <h3 class="sub">OGPO+CA: Conversative updates under critic uncertainty </h3>
+     <p class="lead">
+      As noted above, full-policy finetuning is expressive enough to over-exploit an imperfect critic. This is most visible at the transition from offline pretraining to online RL. There, the critic ensemble has not yet reached agreement on actions outside the offline support, and that disagreement passes directly into the policy gradient &mdash; the familiar performance "dip."
     </p>
     <p>
       Rather than altering the critic update, OGPO modifies the policy-extraction step to act only where the ensemble agrees. For each candidate action it uses a sign-consensus, or <em>conservative</em>, advantage:
@@ -521,15 +499,21 @@ window.MathJax = {
       <img src="assets/figures/conservative_adv.png" alt="OGPO with conservative advantages compared against Cal-QL and WSRL across the offline-to-online transition." loading="lazy">
       <figcaption><b>Conservative advantages against warm-starting recipes.</b> Sign-consensus advantages reduce the early offline-to-online dip without slowing late convergence, in a regime where high-update-to-data and pessimistic-critic recipes (Cal-QL, WSRL) fall short.</figcaption>
     </figure>
+
+    <figure class="f">
+      <img src="assets/figures/teaser_ogpo_vs_plus.png" alt="OGPO compared with OGPO+ on Square, Tool Hang, and Transport, showing faster and higher convergence for OGPO+." loading="lazy">
+      <figcaption><b>From OGPO to OGPO+.</b> Success rate against environment steps on three Robomimic tasks. Grounding in the success buffer makes OGPO+ converge faster, and to higher and steadier success, than the base method.</figcaption>
+    </figure>
   </div>
 </section>
+
 
 <!-- ══ RESULTS ═══════════════════════════════════════ -->
 <section id="results">
   <div class="wrap">
     <div class="read">
-      <div class="eyebrow"><span class="step">6</span> Results</div>
-      <h2 class="h">Where full-finetuning earns its cost</h2>
+      <div class="eyebrow"><span class="step">5</span> Results</div>
+      <h2 class="h">Full-finetuning enjoys dramatic sample efficiency gains</h2>
       <p class="lead">
         Every method begins from the same flow BC checkpoint, clipped to at most 50% success, and finetunes online with no offline or expert data in the replay buffer &mdash; the regime that reflects real deployment. We evaluate across three families that span the hard parts of robot learning: multi-task long-horizon control (Franka Kitchen), high-precision insertion (Robomimic), and dexterous manipulation (Adroit).
       </p>
@@ -664,28 +648,30 @@ window.MathJax = {
 <!-- ══ ANALYSIS ══════════════════════════════════════ -->
 <section id="why">
   <div class="wrap read">
-    <div class="eyebrow"><span class="step">7</span> Analysis</div>
-    <h2 class="h">How OGPO explores</h2>
+    <div class="eyebrow"><span class="step">6</span> Analysis</div>
+    <h2 class="h">Understanding the performance of OGPO</h2>
     <p class="lead">
-      A behavior-cloning policy is mode-seeking: irrespective of reward, it collapses action variance into the narrow cone of demonstrated trajectories. OGPO uses the critic to drive the opposite behavior &mdash; an expansion of the action manifold toward high-value regions beyond the support of the demonstrations.
+      Here, we try to understand <i>why</i> OGPO outperforms other methods. Beyond the routine ablations, we uncover a surprising finding: OGPO <b>drives exploration</b>, rather than merely sharpening the base policy.  
     </p>
-    <p>
-      The mechanism is visible in the action distributions over the course of training. All methods overlap with the BC mode early on, then diverge; OGPO's divergence is shaped by the critic. It reduces variance in the directions orthogonal to $\nabla_a Q$ while spreading along it, so the annealed importance ratio conditions the entire chain toward, rather than against, the value gradient.
+     <h3 class="sub">Aggressive critic <b>exploitation</b> paradoxically <b>drives exploration</b></h3>
+      <p>
+      <!-- A critic-maximizing objective would seem to invite the opposite of exploration. If every update chases the highest-valued action, one expects the policy to narrow onto it &mdash; the mode-seeking collapse that supervised extraction (QC) and Best-of-N exhibit.  -->
+      Whereas diversity, optimality and task efficiency are often regarded as being at odds, we show that OGPO accomplishes all simultaneously. Below, we present extensive evidence for this finding, and propose a mental model, summarized in the figure caption below as to how OGPO achieves this affect.
     </p>
 
-    <figure class="f"><img src="assets/figures/manifold_hero.png" alt="A BC flow policy collapses to a narrow cone of demonstrated actions, while OGPO widens the generative funnel toward the high-value regions of the critic." loading="lazy">
-      <figcaption><b>Mode-seeking against manifold expansion.</b> The BC flow policy (top) collapses its denoising process to a narrow cone around demonstrated actions. OGPO (bottom) reshapes every denoising step to spread probability mass toward the high-value regions of the critic $Q^*$, recovering valid solutions the demonstrations never contained (Push-T, right).</figcaption>
+    <figure class="f"><img src="assets/figures/grad_q_exploration.png" alt="Left: return distributions of the BC and OGPO policies over the critic landscape. Center: the critic gradient lifts the action distribution toward high-value actions and away from an undesirable state. Right: BC traces one narrow Push-T solution while OGPO covers diverse valid trajectories." loading="lazy">
+      <figcaption><b>Why critic-seeking expands rather than collapses.</b> <em>Left:</em> over the return landscape of the critic $Q^*$, a behavior-cloned policy $\pi_{\mathrm{BC}}$ concentrates on a single mode, whereas $\pi_{\mathrm{OGPO}}$ spreads mass across the high-return region. <em>Center:</em> the critic gradient $\nabla_a Q(s,a)$ lifts the action distribution toward high-value actions and away from undesirable states. <em>Right:</em> on Push-T, the BC policy traces one narrow solution, while OGPO recovers a diverse set of valid trajectories.</figcaption>
     </figure>
 
-    <h3 class="sub">What the ablations show</h3>
-    <div class="finds">
-      <div class="find"><span class="n">1</span><b>Zeroth-order over backpropagation.</b> BPTT through the denoising steps often fails catastrophically; PPO's zeroth-order updates remain stable.</div>
-      <div class="find"><span class="n">2</span><b>Best-of-N needs the success buffer.</b> On its own, Best-of-N adds oscillation without improving final performance.</div>
-      <div class="find"><span class="n">3</span><b>Negative gradients are task-dependent.</b> Removing the negative-advantage contribution helps on some tasks and harms exploration on others.</div>
-      <div class="find"><span class="n">4</span><b>No GRPO variance normalization.</b> Adding it markedly degrades performance in this regime.</div>
-      <div class="find"><span class="n">5</span><b>Mean targets over pessimism.</b> Pessimistic initial Q-learning over-conservatizes; mean-of-ensemble targets perform best.</div>
-      <div class="find"><span class="n">6</span><b>Flow and diffusion alike.</b> The insight transfers: OGPO performs comparably across flow- and diffusion-based GCPs.</div>
-    </div>
+    <p>
+      OGPO does not increase variation isotropically: rather, the remaining action-variance as even orthogonal to the critic gradient. Note that, along these directions, differences in actions have zero effect on critic values, to first order. Therefore, we find the OGPO allocates large variance along directions which do not affect task success. At the same time, OGPO (a) sharpens the distribution orthogonal to these directions (resulting in the “thin” ellipsoid seen in Mid/End training), while (b) aggressively “stretching” the action distribution to align with critic gradients in parts of the action distribution when gradients ∇aQ(s, a) exhibit strong consensus, e.g. ψ > 0.6. Thus, OGPO can both optimize the critic for task performance/completion time while simultaneously preserving as much action diversity as possible.
+    </p>
+
+    <figure class="f" style="width:min(1180px,94vw); max-width:none; margin-left:50%; transform:translateX(-50%);">
+      <img src="assets/figures/umap_baselines_last_row.png" alt="UMAP of action samples at a fixed Tool Hang critical state across training: end of BC, then initial, mid, and end of RL. OGPO+ (red) migrates and spreads along the mean critic-gradient arrow while QC (blue), DSRL (purple), and EXPO (green) stay clustered near the initialization." loading="lazy">
+      <figcaption class="read" style="margin:0.65rem auto 0;"><b>Exploration along the value gradient (Tool&nbsp;Hang).</b> UMAP of action samples at a fixed critical state, from the end of BC pretraining through the initial, middle, and final stages of RL. Every method begins co-located at the BC mode; as training proceeds, OGPO+ (<span style="color:var(--ogpo)">red</span>) migrates along the mean critic gradient (arrow) and broadens, while QC, DSRL, and EXPO remain clustered near the initialization. The breadth OGPO+ keeps lies largely perpendicular to $\nabla_a Q$ &mdash; where the critic is insensitive &mdash; so exploration persists without costing performance.</figcaption>
+    </figure>
+
 
     <h3 class="sub">PPO against AWR and FPO for extraction</h3>
     <p>
@@ -694,6 +680,16 @@ window.MathJax = {
     <figure class="f"><img src="assets/figures/extraction_ablations.png" alt="Policy-extraction comparison: PPO against AWR variants and FPO." loading="lazy">
       <figcaption><b>Policy extraction compared.</b> Across extraction objectives &mdash; PPO, the AWR family, and FPO &mdash; PPO-style extraction is consistently strongest.</figcaption>
     </figure>
+
+    <h3 class="sub">Further ablations</h3>
+    <div class="finds">
+      <div class="find"><span class="n">1</span><b>Zeroth-order over backpropagation.</b> BPTT through the denoising steps often fails catastrophically; PPO's zeroth-order updates remain stable.</div>
+      <div class="find"><span class="n">2</span><b>Success buffer over best-of-N.</b> On its own, Best-of-N adds oscillation without improving final performance.</div>
+      <div class="find"><span class="n">3</span><b>Benefits of negative gradients are task-dependent.</b> Removing the negative-advantage contribution helps on some tasks and harms exploration on others.</div>
+      <div class="find"><span class="n">4</span><b>GRPO variance normalization hurts.</b> Adding it markedly degrades performance in this regime.</div>
+      <div class="find"><span class="n">5</span><b>Mean targets outperform pessimism.</b> Pessimistic initial Q-learning over-conservatizes; mean-of-ensemble targets perform best.</div>
+      <div class="find"><span class="n">6</span><b>Flow and diffusion have comparable performance.</b> The insight transfers: OGPO performs comparably across flow- and diffusion-based GCPs. </div>
+    </div>
   </div>
 </section>
 
@@ -701,12 +697,12 @@ window.MathJax = {
 <section id="limits" class="alt">
   <div class="wrap read">
     <div class="eyebrow">Limitations</div>
-    <h2 class="h">Where OGPO is not the right tool</h2>
-    <p class="lead">We state the boundaries of the method plainly.</p>
+    <h2 class="h">Limitations of OGPO</h2>
+    <p class="lead">OGPO shines on sparse reward tasks in low-data regimes. However, it has the following limitations:</p>
     <div class="callout neutral"><span class="k">Full finetuning can be unnecessary</span> When the replay buffer already holds abundant expert-quality data, lighter methods such as residual learning can match OGPO at lower compute.</div>
-    <div class="callout neutral"><span class="k">PPO can over-exploit the critic</span> Aggressive extraction can over-fit an imperfect critic, causing training collapse or a tension between success rate and completion speed. The success buffer, and conservative advantages at the offline-to-online transition, are the remedies.</div>
+    <div class="callout neutral"><span class="k">PPO can over-exploit the critic</span> Aggressive extraction can over-fit an imperfect critic, causing training collapse or a tension between success rate and completion speed. The success buffer, and conservative advantages at the offline-to-online transition, seem to remedy this challenge.</div>
     <div class="callout neutral"><span class="k">Small residual oscillations</span> The success–speed tension produces small oscillations that can keep OGPO from reaching exactly 100% success on some tasks.</div>
-    <div class="callout neutral"><span class="k">Dense and dexterous, with expert data</span> On dense-reward Adroit tasks with proficient demonstrations, residual learning is the more natural fit; OGPO is competitive but not dominant.</div>
+    <div class="callout neutral"><span class="k">Benefits of OGPO are limited on dexterous tasks with dense reward, or with copious expert data</span> On dense-reward Adroit tasks with proficient demonstrations, residual learning is the more natural fit; OGPO is competitive but does not outperform other methods.</div>
   </div>
 </section>
 
