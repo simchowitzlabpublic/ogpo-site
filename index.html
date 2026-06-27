@@ -144,7 +144,7 @@ window.MathJax = {
   .lead { font-size: 1.06rem; color: var(--ink-soft); }
 
   /* figures */
-  figure.f { margin: 1.5rem 0; }
+  figure.f { margin: 1.5rem auto; max-width: var(--readw); }
   figure.f img, figure.f video { width: 100%; height: auto; border-radius: 8px; display: block; border: 1px solid var(--divider); background:#fff; }
   figure.f figcaption { font-size: 0.89rem; color: var(--muted); margin-top: 0.65rem; line-height: 1.55; }
   figure.f figcaption b { color: var(--ink); }
@@ -152,7 +152,7 @@ window.MathJax = {
   .fig-frame img { border:none; border-radius:5px; }
 
   /* callouts */
-  .callout { border-radius: 9px; padding: 0.9rem 1.15rem; margin: 1rem 0; border-left: 3px solid var(--accent); background: var(--accent-soft); font-size: 0.99rem; }
+  .callout { border-radius: 9px; padding: 0.9rem 1.15rem; margin: 1rem auto; border-left: 3px solid var(--accent); background: var(--accent-soft); font-size: 0.99rem; }
   .callout .k { font-family:'Space Grotesk'; font-weight:600; color: var(--ink); display:block; margin-bottom:.15rem; }
   .callout.green { background: var(--good-bg); border-left-color: var(--good); }
   .callout.neutral { background:#f4f3f1; border-left-color: var(--muted); }
@@ -661,7 +661,7 @@ window.MathJax = {
       </p>
     </div>
 
-    <figure class="f"><img src="assets/figures/ogpo_vs_dppo.png" alt="OGPO+ reaches high success far sooner than DPPO as a function of environment steps." loading="lazy">
+    <figure class="f" style="max-width:720px;"><img src="assets/figures/ogpo_vs_dppo.png" alt="OGPO+ reaches high success far sooner than DPPO as a function of environment steps." loading="lazy">
       <figcaption class="read" style="margin-left:auto;margin-right:auto;"><b>Off-policy against on-policy.</b> Success rate versus environment steps: OGPO+ (off-policy critic with denoising-MDP PPO) against DPPO (fully on-policy).</figcaption>
     </figure>
 
@@ -804,7 +804,7 @@ window.MathJax = {
       OGPO does not increase variation isotropically: rather, the remaining action-variance as even orthogonal to the critic gradient. Note that, along these directions, differences in actions have zero effect on critic values, to first order. Therefore, we find the OGPO allocates large variance along directions which do not affect task success. At the same time, OGPO (a) sharpens the distribution orthogonal to these directions (resulting in the “thin” ellipsoid seen in Mid/End training), while (b) aggressively “stretching” the action distribution to align with critic gradients in parts of the action distribution when gradients ∇aQ(s, a) exhibit strong consensus, e.g. ψ > 0.6. Thus, OGPO can both optimize the critic for task performance/completion time while simultaneously preserving as much action diversity as possible.
     </p>
 
-    <figure class="f" style="width:min(1180px,94vw); max-width:none; margin-left:50%; transform:translateX(-50%);">
+    <figure class="f">
       <img src="assets/figures/umap_baselines_last_row.png" alt="UMAP of action samples at a fixed Tool Hang critical state across training: end of BC, then initial, mid, and end of RL. OGPO+ (red) migrates and spreads along the mean critic-gradient arrow while QC (blue), DSRL (purple), and EXPO (green) stay clustered near the initialization." loading="lazy">
       <figcaption class="read" style="margin:0.65rem auto 0;"><b>Exploration along the value gradient (Tool&nbsp;Hang).</b> UMAP of action samples at a fixed critical state, from the end of BC pretraining through the initial, middle, and final stages of RL. Every method begins co-located at the BC mode; as training proceeds, OGPO+ (<span style="color:var(--ogpo)">red</span>) migrates along the thin variance orthogonal to the critic gradient (arrow), while QC, DSRL, and EXPO remain clustered near the initialization.</figcaption>
     </figure>
