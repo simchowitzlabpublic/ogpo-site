@@ -300,9 +300,10 @@ window.MathJax = {
       <img src="assets/figures/teaser_main.png" alt="Figure 1: the bi-level MDP that OGPO severs at the denoising boundary; Transport sample-efficiency curves; and BC-versus-OGPO action distributions over the critic's value landscape." loading="eager">
       <figcaption class="cap">
         <b>OGPO enables sample-efficient full-policy finetuning of generative control policies.</b>
-        <em>Left:</em> a generative control policy (GCP) produces an action through a sequential denoising computation &mdash; a denoising MDP at each environment step. Where prior work (Ren et al., 2024) embeds this denoising MDP into the environment to form a bi-level MDP, OGPO severs the connection and instead maximizes an off-policy critic as a terminal reward, via PPO-style optimization over the denoising trajectories.
+         A generative control policy (GCP) produces an action through a sequential denoising MDP at each environment step. OGPO severs the bi-level MDP at the denoising boundary using an off-policy critic as terminal reward, fine-tunes the entire GCP improving sample efficiency and convergence, and preserves useful exploration variance aligned with high value regions.
+        <!-- <em>Left:</em> a generative control policy (GCP) produces an action through a sequential denoising computation &mdash; a denoising MDP at each environment step. Where prior work (Ren et al., 2024) embeds this denoising MDP into the environment to form a bi-level MDP, OGPO severs the connection and instead maximizes an off-policy critic as a terminal reward, via PPO-style optimization over the denoising trajectories.
         <em>Middle:</em> on challenging tasks such as Robomimic Transport, OGPO substantially improves sample efficiency over prior GCP-finetuning methods, even under limited hyperparameter tuning.
-        <em>Right:</em> despite this efficiency, OGPO retains non-trivial variance in its action distribution, and hence its capacity to explore; the remaining variance is squeezed to lie perpendicular to the critic gradient $\nabla_a Q(s,a)$, where it does not conflict with performance.
+        <em>Right:</em> despite this efficiency, OGPO retains non-trivial variance in its action distribution, and hence its capacity to explore; the remaining variance is squeezed to lie perpendicular to the critic gradient $\nabla_a Q(s,a)$, where it does not conflict with performance. -->
       </figcaption>
     </figure>
   </div>
@@ -312,7 +313,7 @@ window.MathJax = {
 <section id="overview">
   <div class="wrap read">
     <div class="eyebrow">Abstract</div>
-    <h2 class="h">Full-finetuning, kept sample-efficient</h2>
+    <h2 class="h">Full-finetuning for Maximal Sample Efficiency</h2>
     <p class="lead">
       Generative control policies (GCPs) &mdash; diffusion- and flow-based control policies &mdash; have emerged as effective parameterizations for robot learning. This work introduces <strong>Off-Policy Generative Policy Optimization (OGPO)</strong>, a sample-efficient algorithm for finetuning GCPs that maintains off-policy critic networks to maximize data reuse and propagates policy gradients through the full generative process via a modified PPO objective, using the critics as the terminal reward.
     </p>
@@ -552,7 +553,7 @@ window.MathJax = {
       Aggressive policy extraction can overly exploit imperfectly learned critics. Moreover, under the sparse, &minus;1-per-step reward typical in robotic manipulation, maximizing return trades completion <em>rate</em> against completion <em>speed</em>, and OGPO may learn to finish quickly at the expense of reliability. We propose two modifications, OGPO+ and OGPO+CA, that address these challenges, ensuring greater training stability and sample efficiency.
     </p>
 
-    <div class="anim-host" data-anim="stabilizers">
+    <!-- <div class="anim-host" data-anim="stabilizers">
       <figure class="f anim-fallback">
         <img src="assets/figures/conservative_adv.png" alt="OGPO with conservative advantages compared against Cal-QL and WSRL across the offline-to-online transition." loading="lazy">
       </figure>
@@ -602,10 +603,10 @@ window.MathJax = {
         <div class="anim-controls"><button class="primary" data-run>⏸ Pause</button></div>
         <p class="anim-caption" data-cap></p>
       </div>
-    </div>
-    <figcaption class="f" style="font-size:0.89rem;color:var(--muted);margin:0.65rem 0 0;line-height:1.55;">
+    </div> -->
+    <!-- <figcaption class="f" style="font-size:0.89rem;color:var(--muted);margin:0.65rem 0 0;line-height:1.55;">
       <b style="color:var(--ink)">Two stabilizers for full-policy finetuning.</b> Switch tabs. <em>Conservative advantage</em> (OGPO+CA): the critic ensemble's advantage is gated to fire only when all members agree on its sign, taking the most conservative magnitude — so disagreement on out-of-support actions can't destabilize the policy, flattening the offline→online dip. <em>Success buffer</em> (OGPO+): an asymmetric cloning loss on successful episodes raises their likelihood (the ELBo on the generative model) — a floor under the modes PPO would otherwise abandon.
-    </figcaption>
+    </figcaption> -->
 
     <h3 class="sub">OGPO+: Behavior cloning from a success buffer</h3>
     <p>
@@ -618,7 +619,7 @@ window.MathJax = {
 
     <h3 class="sub">OGPO+CA: Conversative updates under critic uncertainty </h3>
      <p class="lead">
-      As noted above, full-policy finetuning is expressive enough to over-exploit an imperfect critic. This is most visible at the transition from offline pretraining to online RL. There, the critic ensemble has not yet reached agreement on actions outside the offline support, and that disagreement passes directly into the policy gradient &mdash; the familiar performance "dip."
+      As noted above, full-policy finetuning is expressive enough to over-exploit an imperfect critic. This is most visible at the transition from offline pretraining to online RL. There, the critic ensemble has not yet reached agreement on actions outside the offline support, and that disagreement shows up as a performance dip at the offline-to-online RL transition."
     </p>
     <p>
       Rather than altering the critic update, OGPO modifies the policy-extraction step to act only where the ensemble agrees. For each candidate action it uses a sign-consensus, or <em>conservative</em>, advantage:
@@ -651,17 +652,17 @@ window.MathJax = {
       <div class="eyebrow"><span class="step">5</span> Results</div>
       <h2 class="h">Full-finetuning enjoys dramatic sample efficiency gains</h2>
       <p class="lead">
-        Every method begins from the same flow BC checkpoint, clipped to at most 50% success, and finetunes online with no offline or expert data in the replay buffer &mdash; the regime that reflects real deployment. We evaluate across three families that span the hard parts of robot learning: multi-task long-horizon control (Franka Kitchen), high-precision insertion (Robomimic), and dexterous manipulation (Adroit).
+        Every method begins from the same flow BC checkpoint, clipped to at most 50% success, and finetunes online with no offline or expert data in the replay buffer, a regime representative of real-world deployment. We evaluate across three families that span the hard parts of robot learning: , high-precision long horizon tasks (Robomimic), multi-task RL from partial and mixed datasets (Franka Kitchen), and short horizon dense reward dexterous manipulation (Adroit).
       </p>
 
-      <h3 class="sub">Roughly 7&times; the sample efficiency of on-policy DPPO</h3>
+      <h3 class="sub">An order of magnitude sample efficiency compared to on-policy DPPO</h3>
       <p>
-        OGPO+ and DPPO differ in a single respect: OGPO+ severs the bi-level MDP and uses an off-policy critic as a terminal reward, whereas DPPO applies on-policy PPO to the entire bi-level MDP. That one change makes DPPO take on the order of 7&times; longer to reach the success rate OGPO+ attains, and OGPO+ exceeds DPPO's own reported numbers in both efficiency and final performance on every shared task.
+        OGPO severs the bi-level MDP and uses an off-policy critic as a terminal reward, whereas DPPO applies on-policy PPO to the entire bi-level MDP. OGPO achieves an order of magnitiude higher success far sooner than DPPO, which is limited by the cost of environment interactions and the effective horizon of the denoising process.
       </p>
     </div>
 
     <figure class="f"><img src="assets/figures/ogpo_vs_dppo.png" alt="OGPO+ reaches high success far sooner than DPPO as a function of environment steps." loading="lazy">
-      <figcaption class="read" style="margin-left:auto;margin-right:auto;"><b>Off-policy against on-policy.</b> Success rate versus environment steps: OGPO+ (off-policy critic with denoising-MDP PPO) against DPPO (fully on-policy). Note the difference in horizontal scale.</figcaption>
+      <figcaption class="read" style="margin-left:auto;margin-right:auto;"><b>Off-policy against on-policy.</b> Success rate versus environment steps: OGPO+ (off-policy critic with denoising-MDP PPO) against DPPO (fully on-policy).</figcaption>
     </figure>
 
     <div class="read"><h3 class="sub">Across environments</h3></div>
@@ -670,17 +671,17 @@ window.MathJax = {
         <button class="active" data-t="env-robomimic">Robomimic</button>
         <button data-t="env-kitchen">Franka Kitchen</button>
         <button data-t="env-adroit">Adroit</button>
-        <button data-t="env-all">All baselines</button>
+        <!-- <button data-t="env-all">All baselines</button> -->
       </div>
 
       <div class="panel active" id="env-robomimic">
-        <div class="read callout"><span class="k">High-precision insertion</span> Square (medium horizon), Tool&nbsp;Hang (long horizon, multi-step), and Transport (bi-manual). The base policy is weak here, so steering and residual methods stall while full-policy OGPO continues to improve.</div>
+        <div class="read callout"><span class="k">High-precision Long Horizon tasks</span> Square (medium horizon), Tool&nbsp;Hang (long horizon, high precision), and Transport (bi-manual, long-horizon). The base policy is weak here, so steering and residual methods stall while full-policy OGPO continues to improve.</div>
         <figure class="f"><img src="assets/figures/results_robomimic.png" alt="Robomimic success-rate curves for OGPO and OGPO+ against DSRL, EXPO, and QC on Square, Tool Hang, and Transport." loading="lazy">
           <figcaption class="read" style="margin-left:auto;margin-right:auto;"><b>Robomimic.</b> OGPO and OGPO+ converge to high success on all three insertion tasks, including long-horizon Tool Hang and bi-manual Transport, where off-policy baselines plateau or destabilize.</figcaption></figure>
       </div>
 
       <div class="panel" id="env-kitchen">
-        <div class="read callout"><span class="k">Multi-task, mixed data quality</span> A 9-DoF Franka manipulating four objects, with complete, mixed-order, and partial demonstrations. The weak, partial initialization is exactly where steering and residual methods tend to break down.</div>
+        <div class="read callout"><span class="k">Multi-task, mixed data quality</span> A 9-DoF Franka manipulating four objects, with complete, mixed-order, and partial demonstrations.</div>
         <figure class="f"><img src="assets/figures/results_kitchen.png" alt="Franka Kitchen success-rate curves for the Complete, Mixed, and Partial demonstration settings." loading="lazy">
           <figcaption class="read" style="margin-left:auto;margin-right:auto;"><b>Franka Kitchen.</b> OGPO handles the complete, mixed, and partial regimes, learning multi-step behavior even when the demonstrations are low-quality or truncated.</figcaption></figure>
       </div>
@@ -691,12 +692,12 @@ window.MathJax = {
           <figcaption class="read" style="margin-left:auto;margin-right:auto;"><b>Adroit (Door, Hammer, Pen, Relocate).</b> With dense rewards and strong expert data, residual learning is well matched to the task; OGPO is competitive but does not need its full expressivity here.</figcaption></figure>
       </div>
 
-      <div class="panel" id="env-all">
+      <!-- <div class="panel" id="env-all">
         <div class="read callout"><span class="k">The full comparison</span> OGPO and OGPO+ against all off-policy baselines across the benchmark suite.</div>
         <figure class="f"><img src="assets/figures/results_baselines_all.png" alt="Comprehensive comparison of OGPO and OGPO+ against all off-policy baselines across tasks." loading="lazy">
           <figcaption class="read" style="margin-left:auto;margin-right:auto;"><b>OGPO against all off-policy baselines.</b> Across the suite, OGPO and OGPO+ are the only methods strong on mixed and partial data, high-precision, and long-horizon tasks at once.</figcaption></figure>
       </div>
-    </div>
+    </div> -->
 
     <div class="read">
       <h3 class="sub">A method without a weak regime</h3>
@@ -757,7 +758,7 @@ window.MathJax = {
   <div class="wrap read">
     <div class="eyebrow">Rollouts</div>
     <h2 class="h">Behavior at deployment</h2>
-    <p class="lead">Rollouts from the clipped BC initialization. OGPO+ completes high-precision insertion reliably, while the partial-finetuning baselines fail in characteristic ways.</p>
+    <p class="lead">Rollouts from the clipped BC initialization. OGPO+ completes high-precision long horizon reliably, while the partial-finetuning baselines fail in characteristic ways.</p>
 
     <div class="tabs" id="vid-tabs">
       <div class="tabbar">
@@ -805,7 +806,7 @@ window.MathJax = {
 
     <figure class="f" style="width:min(1180px,94vw); max-width:none; margin-left:50%; transform:translateX(-50%);">
       <img src="assets/figures/umap_baselines_last_row.png" alt="UMAP of action samples at a fixed Tool Hang critical state across training: end of BC, then initial, mid, and end of RL. OGPO+ (red) migrates and spreads along the mean critic-gradient arrow while QC (blue), DSRL (purple), and EXPO (green) stay clustered near the initialization." loading="lazy">
-      <figcaption class="read" style="margin:0.65rem auto 0;"><b>Exploration along the value gradient (Tool&nbsp;Hang).</b> UMAP of action samples at a fixed critical state, from the end of BC pretraining through the initial, middle, and final stages of RL. Every method begins co-located at the BC mode; as training proceeds, OGPO+ (<span style="color:var(--ogpo)">red</span>) migrates along the mean critic gradient (arrow) and broadens, while QC, DSRL, and EXPO remain clustered near the initialization. The breadth OGPO+ keeps lies largely perpendicular to $\nabla_a Q$ &mdash; where the critic is insensitive &mdash; so exploration persists without costing performance.</figcaption>
+      <figcaption class="read" style="margin:0.65rem auto 0;"><b>Exploration along the value gradient (Tool&nbsp;Hang).</b> UMAP of action samples at a fixed critical state, from the end of BC pretraining through the initial, middle, and final stages of RL. Every method begins co-located at the BC mode; as training proceeds, OGPO+ (<span style="color:var(--ogpo)">red</span>) migrates along the thin variance orthogonal to the critic gradient (arrow), while QC, DSRL, and EXPO remain clustered near the initialization.</figcaption>
     </figure>
 
 

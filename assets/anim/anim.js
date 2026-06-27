@@ -134,15 +134,14 @@
     }
 
     var CAPS = {
-      dsrl: { c: 'var(--dsrl,#7c3aed)', k: 'DSRL — steer the initial noise.', b: 'Re-aims sampling within the frozen policy’s support.', why: 'Reaches the near mode at best — the second optimum lies outside support and stays unfound.' },
-      expo: { c: 'var(--good,#15803d)', k: 'EXPO — add a bounded residual.', b: 'A bounded additive correction on each final action.', why: 'Residuals can escape the support, but they’re misaligned with the value landscape — they only graze the high-value modes.' },
-      qc: { c: 'var(--critic,#2563eb)', k: 'QC — Best-of-N supervised clone.', b: 'Clones toward high-scoring samples and shrinks.', why: 'Averages onto one low-variance blob mid-corridor — neither mode, diversity lost.' },
-      ogpo: { c: 'var(--ogpo,#c0392b)', k: 'OGPO — update the full policy.', b: 'Sample N trajectories → score with Q → advantage → up-weight likelihood.', why: 'Discovers the far optimum away from BC and spans both modes — diverse and optimal.' }
+      dsrl: { c: 'var(--dsrl,#7c3aed)', k: 'DSRL steers the noise at the GCP input', b: 'and can effectively steer the base policy toward nearby Q* modes, but cannot expand to optimal action modes beyond the frozen policy’s support.'},
+      expo: { c: 'var(--good,#15803d)', k: 'EXPO adds a bounded residual on the GCP output.', b: 'Residual corrections require a strong base policy already near the Q* modes. With a weak base policy, optimizing residual policies can be challenging in the environment state space.'},
+      qc: { c: 'var(--critic,#2563eb)', k: 'QC ranks Best-of-N actions and SFT finetunes the policy.', b: 'Best-of-N with SFT loss shrinks the action distribution to a low-variance region along higher Q values, but in the presence of multiple modes, it may not fully finetune toward the optimal actions.'},
+      ogpo: { c: 'var(--ogpo,#c0392b)', k: 'OGPO does a PPO-style full-policy update with GRPO-style Advantage computation via Q functions.', b: 'This allows the finetuned policy to generate actions well beyond the base policy support and effectively explore the environment state space to reach multiple Q* modes.'}
     };
     function setCap() {
       var m = CAPS[method];
-      capEl.innerHTML = '<span class="k" style="color:' + m.c + '">' + m.k + '</span> ' + m.b + ' <span class="why">' + m.why + '</span>' +
-        (method === 'ogpo' ? '<span class="mech">Honest mechanism: mass moves because high-advantage samples are <b>up-weighted</b> — not because it reads ∇Q. The corridor between the modes is still high-Q, so OGPO keeps variance <b>spanning</b> them.</span>' : '');
+      capEl.innerHTML = '<span class="k" style="color:' + m.c + '">' + m.k + '</span> ' + m.b + '</span>';
     }
 
     var GLOW = { ogpo: [226, 122, 84], dsrl: [150, 132, 224], expo: [70, 190, 150], qc: [110, 150, 225] };
@@ -248,9 +247,9 @@
     meanLine.setAttribute('x1', meanX); meanLine.setAttribute('x2', meanX); meanLbl.setAttribute('x', meanX);
 
     var CAPS = [
-      [0, 170, '<span class="k">Sample many actions from one state</span> — several denoising trajectories, rolled in parallel.'],
-      [170, 330, '<span class="k">Rank them by the critic Q.</span> Advantage = score minus the group mean.'],
-      [330, 560, '<span class="k">Up-weight the high-Q trajectories, down-weight the rest</span> — the denoising policy is updated.']
+      [0, 170, '<span class="k">Sample a group of actions in parallel and compute the log probabilities of the denoising trajectories.</span>'],
+      [170, 330, '<span class="k">Rank them by the critic via Advantage given as Q - mean(Q).</span>'],
+      [330, 560, '<span class="k">Update each denoising chain via advantages reconciled with their importance sampling ratios.</span>']
     ];
     function cap(f) { for (var i = 0; i < CAPS.length; i++) if (f >= CAPS[i][0] && f < CAPS[i][1]) return CAPS[i][2]; return CAPS[CAPS.length - 1][2]; }
 
@@ -439,7 +438,7 @@
       var a = el('circle', { cx: EX, cy: t.y, r: 12, fill: '#eef4ff', stroke: '#9bb8e8', 'stroke-width': 2.5, opacity: 0 }); gFan.appendChild(a); acts.push(a);
     });
 
-    var CAP = '<b>The bi-level MDP.</b> An environment MDP s₀→s₁→s₂ collects rewards r₀,r₁,r₂; <b>each env step is itself a denoising MDP</b> that generates the action (a<sub>t</sub>ᴷ→a<sub>t</sub>⁰). <b>OGPO severs the s₁→s₂ transition</b> and instead rolls <b>many denoising trajectories from s₁ in parallel</b> — all scored by the off-policy critic Q.';
+    var CAP = '<b>The bi-level MDP.</b> An environment MDP s₀→s₁→s₂ collects rewards r₀,r₁,r₂; <b>each env step is itself a denoising MDP</b> that generates the action (a<sub>t</sub>ᴷ→a<sub>t</sub>⁰). <b>OGPO severs the s₁→s₂ transition</b> and instead rolls a <b>group of denoising trajectories from s₁ in parallel</b> which are in-turn updated via the off-policy critics.';
     var LOOP = 560, f = 0, raf = null, userPaused = false;
     function setOp(id, v) { q(id).setAttribute('opacity', v); }
     function render(f) {
